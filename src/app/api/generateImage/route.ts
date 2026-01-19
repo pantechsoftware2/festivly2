@@ -13,6 +13,22 @@ import { v4 as uuidv4 } from 'uuid'
 // Prevent duplicate concurrent requests with Promise-based queue
 const requestInProgress = new Map<string, Promise<any>>()
 const requestResults = new Map<string, any>()
+const processedRequestIds = new Set<string>() // Track recently processed request IDs
+const requestIdTimestamps = new Map<string, number>() // Track when each requestId was processed
+
+// Clean up old requestIds every 5 minutes (to prevent memory leak)
+setInterval(() => {
+  const now = Date.now()
+  const CLEANUP_AGE = 5 * 60 * 1000 // 5 minutes
+  
+  for (const [requestId, timestamp] of requestIdTimestamps.entries()) {
+    if (now - timestamp > CLEANUP_AGE) {
+      processedRequestIds.delete(requestId)
+      requestIdTimestamps.delete(requestId)
+      console.log(`🧹 Cleaned up old requestId: ${requestId}`)
+    }
+  }
+}, 5 * 60 * 1000)
 
 /**
  * Add logo overlay to base64 image (using Canvas API via jimp or simple approach)
@@ -95,6 +111,7 @@ interface GenerateImageRequest {
   eventId?: string
   prompt?: string
   userId?: string
+  requestId?: string
 }
 
 interface GeneratedImage {
@@ -160,7 +177,26 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
     }
 
     const body: GenerateImageRequest = await request.json()
-    const { eventId, prompt: userPrompt, userId } = body
+    const { eventId, prompt: userPrompt, userId, requestId } = body
+
+    // NEW: Check for duplicate requestId (indicates duplicate submission from client)
+    if (requestId) {
+      if (processedRequestIds.has(requestId)) {
+        console.log(`🚫 DUPLICATE DETECTED: RequestId ${requestId} already processed. REJECTING.`)
+        return NextResponse.json(
+          {
+            success: false,
+            images: [],
+            prompt: '',
+            error: 'Duplicate request detected - this request was already submitted',
+          },
+          { status: 400 }
+        )
+      }
+      console.log(`✅ RequestId validated: ${requestId}`)
+    } else {
+      console.warn(`⚠️ No requestId provided - cannot detect duplicates`)
+    }
 
     // GOOGLE AUTH DEBUG: Log userId presence
     console.log(`🔍 REQUEST DEBUG - userId: ${userId || 'MISSING'}, hasEventId: ${!!eventId}, hasPrompt: ${!!userPrompt}`)
@@ -197,6 +233,14 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
 
     try {
       const result = await requestPromise
+      
+      // NEW: Mark requestId as processed to prevent future duplicates
+      if (requestId) {
+        processedRequestIds.add(requestId)
+        requestIdTimestamps.set(requestId, Date.now())
+        console.log(`✅ RequestId marked as processed: ${requestId}`)
+      }
+      
       // Cache the result data (not the response object)
       const responseClone = result.clone()
       const resultData = await responseClone.json()

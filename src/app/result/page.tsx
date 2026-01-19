@@ -48,6 +48,19 @@ export default function ResultPage() {
   useEffect(() => {
     if (!loading && (!result || !result.images || result.images.length === 0)) {
       router.push('/home')
+      return
+    }
+
+    // Check if images are only placeholders (SVG from quota error)
+    if (result?.images && result.images.length > 0) {
+      const hasRealImages = result.images.some(img => 
+        !img.url.startsWith('data:image/svg+xml')
+      )
+      
+      if (!hasRealImages) {
+        console.warn('⚠️ Only placeholder images found (quota exceeded). Redirecting to home...')
+        router.push('/home')
+      }
     }
   }, [result, loading, router])
 

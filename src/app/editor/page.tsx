@@ -182,6 +182,10 @@ function EditorPageContent() {
       return
     }
 
+    // Generate unique request ID to prevent duplicate processing
+    const requestId = `${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`
+    console.log(`🔑 Request ID: ${requestId}`)
+
     // CRITICAL: Wait for logo to finish loading before generating
     // Especially important for Google users where logo is uploaded in callback
     if (logoFetching) {
@@ -233,6 +237,7 @@ function EditorPageContent() {
         body: JSON.stringify({
           prompt: prompt.trim(),
           userId: user.id,
+          requestId: requestId, // Include unique request ID
         }),
         signal: controller.signal,
       })
