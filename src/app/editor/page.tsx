@@ -176,6 +176,12 @@ function EditorPageContent() {
       return
     }
 
+    // CRITICAL: Prevent double-click/duplicate submissions
+    if (generating) {
+      console.warn('⚠️ Generation already in progress, ignoring duplicate click')
+      return
+    }
+
     // CRITICAL: Wait for logo to finish loading before generating
     // Especially important for Google users where logo is uploaded in callback
     if (logoFetching) {
