@@ -13,7 +13,6 @@ import { v4 as uuidv4 } from 'uuid'
 // Prevent duplicate concurrent requests with Promise-based queue
 const requestInProgress = new Map<string, Promise<any>>()
 const requestResults = new Map<string, any>()
-const lastRequestTime = new Map<string, number>() // Track last request time per user
 
 /**
  * Add logo overlay to base64 image (using Canvas API via jimp or simple approach)
@@ -178,35 +177,10 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
       )
     }
 
-    // PRODUCTION FIX: Add rate limiting - prevent requests within 5 seconds from same user
-    const userKey = userId || 'anon'
-    const now = Date.now()
-    const lastTime = lastRequestTime.get(userKey) || 0
-    const timeSinceLastRequest = now - lastTime
-    
-    if (timeSinceLastRequest < 5000) {
-      console.warn(`⚠️ RATE LIMIT: User ${userKey} requested again after ${timeSinceLastRequest}ms (min 5000ms)`)
-      return NextResponse.json(
-        {
-          success: false,
-          images: [],
-          prompt: '',
-          error: 'Please wait a moment before generating another image',
-        },
-        { status: 429 } // Return 429 - Too Many Requests
-      )
-    }
-    lastRequestTime.set(userKey, now)
-
     // Deduplicate concurrent requests - if same request is in progress, wait for it
     const cacheKey = getCacheKey(userId || 'anon', userPrompt || eventId || '')
     console.log(`🔑 Cache key: ${cacheKey}`)
-    
-    // PRODUCTION FIX: Disable in-memory caching on Vercel (each instance has separate memory)
-    // Only use caching in development where single instance runs
-    const isProduction = process.env.NODE_ENV === 'production'
-    
-    if (!isProduction && requestInProgress.has(cacheKey)) {
+    if (requestInProgress.has(cacheKey)) {
       console.log(`♻️ DEDUP: Waiting for in-progress request with key: ${cacheKey}`)
       await requestInProgress.get(cacheKey)!
       // Return a fresh response from cached result data instead of reusing the response object
@@ -219,30 +193,24 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
 
     // Mark this request as in-progress
     const requestPromise = processGenerationRequest(body)
-    if (!isProduction) {
-      requestInProgress.set(cacheKey, requestPromise)
-    }
+    requestInProgress.set(cacheKey, requestPromise)
 
     try {
       const result = await requestPromise
       // Cache the result data (not the response object)
-      if (!isProduction) {
-        const responseClone = result.clone()
-        const resultData = await responseClone.json()
-        requestResults.set(cacheKey, { 
-          data: resultData, 
-          status: result.status 
-        })
-      }
+      const responseClone = result.clone()
+      const resultData = await responseClone.json()
+      requestResults.set(cacheKey, { 
+        data: resultData, 
+        status: result.status 
+      })
       return result
     } finally {
       // Clean up after 1 second to allow time for duplicate checks
-      if (!isProduction) {
-        setTimeout(() => {
-          requestInProgress.delete(cacheKey)
-          requestResults.delete(cacheKey)
-        }, 1000)
-      }
+      setTimeout(() => {
+        requestInProgress.delete(cacheKey)
+        requestResults.delete(cacheKey)
+      }, 1000)
     }
   } catch (error: any) {
     console.error('Handler error:', error?.message)
