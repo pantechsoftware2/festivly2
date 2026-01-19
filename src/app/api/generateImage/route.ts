@@ -180,7 +180,12 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
     // Deduplicate concurrent requests - if same request is in progress, wait for it
     const cacheKey = getCacheKey(userId || 'anon', userPrompt || eventId || '')
     console.log(`🔑 Cache key: ${cacheKey}`)
-    if (requestInProgress.has(cacheKey)) {
+    
+    // PRODUCTION FIX: Disable in-memory caching on Vercel (each instance has separate memory)
+    // Only use caching in development where single instance runs
+    const isProduction = process.env.NODE_ENV === 'production'
+    
+    if (!isProduction && requestInProgress.has(cacheKey)) {
       console.log(`♻️ DEDUP: Waiting for in-progress request with key: ${cacheKey}`)
       await requestInProgress.get(cacheKey)!
       // Return a fresh response from cached result data instead of reusing the response object
@@ -193,24 +198,30 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
 
     // Mark this request as in-progress
     const requestPromise = processGenerationRequest(body)
-    requestInProgress.set(cacheKey, requestPromise)
+    if (!isProduction) {
+      requestInProgress.set(cacheKey, requestPromise)
+    }
 
     try {
       const result = await requestPromise
       // Cache the result data (not the response object)
-      const responseClone = result.clone()
-      const resultData = await responseClone.json()
-      requestResults.set(cacheKey, { 
-        data: resultData, 
-        status: result.status 
-      })
+      if (!isProduction) {
+        const responseClone = result.clone()
+        const resultData = await responseClone.json()
+        requestResults.set(cacheKey, { 
+          data: resultData, 
+          status: result.status 
+        })
+      }
       return result
     } finally {
       // Clean up after 1 second to allow time for duplicate checks
-      setTimeout(() => {
-        requestInProgress.delete(cacheKey)
-        requestResults.delete(cacheKey)
-      }, 1000)
+      if (!isProduction) {
+        setTimeout(() => {
+          requestInProgress.delete(cacheKey)
+          requestResults.delete(cacheKey)
+        }, 1000)
+      }
     }
   } catch (error: any) {
     console.error('Handler error:', error?.message)
@@ -345,6 +356,10 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
     console.log(`\n🚀 REQUEST #${Math.random().toString(36).substring(7).toUpperCase()} - Generating 4 images`)
     console.log(`   userId: ${userId || 'UNDEFINED'}, subscription: ${userSubscription}, industry: ${userIndustry}${!userHasIndustry ? ' (DEFAULT)' : ''}`)
     console.log(`   NOTE: All users get unlimited free generations with all 4 images`)
+    console.log(`\n🔐 ABOUT TO CALL IMAGEN API:`)
+    console.log(`   Environment confirmed - Project: ${process.env.GOOGLE_CLOUD_PROJECT_ID}`)
+    console.log(`   Service key ready: ${!!process.env.GOOGLE_SERVICE_ACCOUNT_KEY}`)
+    console.log(`   Region: ${process.env.GOOGLE_CLOUD_REGION || 'us-central1'}`)
 
     // Generate 4 images (or call multiple times)
     let base64Images: string[] = []
