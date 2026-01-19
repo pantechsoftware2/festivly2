@@ -213,13 +213,24 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
       )
     }
 
-    // Deduplicate concurrent requests - if same request is in progress, wait for it
+    // Deduplicate concurrent requests using requestId (most reliable)
     const cacheKey = getCacheKey(userId || 'anon', userPrompt || eventId || '')
     console.log(`🔑 Cache key: ${cacheKey}`)
-    if (requestInProgress.has(cacheKey)) {
-      console.log(`♻️ DEDUP: Waiting for in-progress request with key: ${cacheKey}`)
+    
+    // PRIORITY 1: Use requestId for deduplication (each client request is unique)
+    if (requestId && requestInProgress.has(requestId)) {
+      console.log(`♻️ DEDUP (requestId): Duplicate submission detected for requestId: ${requestId}`)
+      const cachedResult = requestResults.get(requestId)
+      if (cachedResult) {
+        console.log(`♻️ DEDUP: Returning cached result with ${cachedResult.data.images?.length || 0} images`)
+        return NextResponse.json(cachedResult.data, { status: cachedResult.status })
+      }
+    }
+    
+    // PRIORITY 2: Fall back to cache key for old clients without requestId
+    if (!requestId && requestInProgress.has(cacheKey)) {
+      console.log(`♻️ DEDUP (cacheKey): Waiting for in-progress request with key: ${cacheKey}`)
       await requestInProgress.get(cacheKey)!
-      // Return a fresh response from cached result data instead of reusing the response object
       const cachedResult = requestResults.get(cacheKey)
       if (cachedResult) {
         console.log(`♻️ DEDUP: Returning cached result with ${cachedResult.data.images?.length || 0} images`)
@@ -227,9 +238,10 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
       }
     }
 
-    // Mark this request as in-progress
+    // Mark this request as in-progress using requestId if available, otherwise cacheKey
+    const dedupeKey = requestId || cacheKey
     const requestPromise = processGenerationRequest(body)
-    requestInProgress.set(cacheKey, requestPromise)
+    requestInProgress.set(dedupeKey, requestPromise)
 
     try {
       const result = await requestPromise
@@ -244,7 +256,7 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
       // Cache the result data (not the response object)
       const responseClone = result.clone()
       const resultData = await responseClone.json()
-      requestResults.set(cacheKey, { 
+      requestResults.set(dedupeKey, { 
         data: resultData, 
         status: result.status 
       })
@@ -252,8 +264,8 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
     } finally {
       // Clean up after 1 second to allow time for duplicate checks
       setTimeout(() => {
-        requestInProgress.delete(cacheKey)
-        requestResults.delete(cacheKey)
+        requestInProgress.delete(dedupeKey)
+        requestResults.delete(dedupeKey)
       }, 1000)
     }
   } catch (error: any) {
