@@ -134,6 +134,20 @@ function SignUpContent() {
   }
 
   return (
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      {/* Using SimpleSignUpModal instead - redirect to home */}
+      <div className="text-center text-white">
+        <h1 className="text-3xl font-bold mb-4">Welcome to Festivly</h1>
+        <p className="text-gray-400 mb-8">Redirecting to signup...</p>
+        <a href="/" className="text-blue-400 hover:text-blue-300 underline">
+          Go to Home
+        </a>
+      </div>
+    </div>
+  )
+
+  /* OLD EMAIL/PASSWORD SIGNUP - COMMENTED OUT (using SimpleSignUpModal instead)
+  return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4 pt-24 sm:pt-20">
       <Card className="w-full max-w-sm sm:max-w-md bg-white border-0 shadow-lg">
         <div className="p-6 sm:p-8">
@@ -245,4 +259,5 @@ function SignUpContent() {
       </Card>
     </div>
   )
+  */
 }
