@@ -24,3 +24,8 @@ export const eventKeywords = {
   "Makar Sankranti": "colorful kites in the sky, sun rays, yellow flowers, harvest festival",
   "Republic Day": "Indian tricolor flag, ashoka chakra, saffron and green smoke, patriotic"
 };
+
+
+
+
+// vklsnvkdfvds
