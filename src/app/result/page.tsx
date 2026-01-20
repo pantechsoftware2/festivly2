@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { checkImageLimit } from '@/lib/image-limit'
 import { createClient } from '@/lib/supabase'
+import { FaWhatsapp, FaInstagram } from "react-icons/fa";
+
 
 interface GeneratedImage {
   id: string
@@ -36,6 +38,7 @@ export default function ResultPage() {
   const [imagesWithLogo, setImagesWithLogo] = useState<Record<string, string>>({})
   const [logoPosition, setLogoPosition] = useState<'left' | 'right'>('right')
   const [testOverlay, setTestOverlay] = useState(false)
+  const [copiedCaption, setCopiedCaption] = useState(false)
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -263,7 +266,7 @@ export default function ResultPage() {
           const img = new Image()
           img.crossOrigin = 'anonymous'
           img.referrerPolicy = 'no-referrer'
-          const timeout = setTimeout(() => reject(new Error('timeout')), 10000)
+          const timeout = setTimeout(() => reject(new Error('timeout')), 30000)
           img.onload = () => { clearTimeout(timeout); resolve(img) }
           img.onerror = () => { clearTimeout(timeout); reject(new Error('load failed')) }
           img.src = imageUrl
@@ -298,7 +301,7 @@ export default function ResultPage() {
               const img = new Image()
               img.crossOrigin = 'anonymous'
               img.referrerPolicy = 'no-referrer'
-              const timeout = setTimeout(() => reject(new Error('timeout')), 5000)
+              const timeout = setTimeout(() => reject(new Error('timeout')), 20000)
               img.onload = () => { clearTimeout(timeout); resolve(img) }
               img.onerror = () => { clearTimeout(timeout); reject(new Error('load failed')) }
               img.src = logoUrl
@@ -306,52 +309,48 @@ export default function ResultPage() {
 
             console.log(`✅ Logo loaded: ${logoImg.width}x${logoImg.height}`)
 
-            // Calculate logo size - SQUARE (same width and height)
-            const logoSize = Math.max(80, Math.min(180, canvas.width * 0.15))  // 15% of image, min 80px, max 180px
+            // Calculate logo size maintaining aspect ratio
+            const MAX_WIDTH = 200
+            const MAX_HEIGHT = 150
+            const padding = 20  // 20px padding from edges
             
-            const logoW = logoSize
-            const logoH = logoSize
+            const originalW = logoImg.width
+            const originalH = logoImg.height
 
-            // Padding around logo inside white box
-            const padding = 10
-            const boxW = logoW + padding * 2
-            const boxH = logoH + padding * 2
-            const safeMargin = 15  // Safe margin to keep box fully inside canvas
-            const bottomOffset = 180  // Move logo up from bottom (was 50% visible)
+            // Scale factor that fits BOTH constraints
+            const scale = Math.min(
+              MAX_WIDTH / originalW,
+              MAX_HEIGHT / originalH,
+              1 // never upscale small logos
+            )
 
-            // Position logo based on selected position (left or right corner)
-            // IMPORTANT: Keep entire box fully visible inside canvas
+            const logoW = Math.round(originalW * scale)
+            const logoH = Math.round(originalH * scale)
+            
+            console.log(`📐 Logo resized safely: ${originalW}x${originalH} → ${logoW}x${logoH}`)
+
+            // Position logo in bottom-right corner with 20px padding
             let logoX: number
             let logoY: number
 
             if (logoPosition === 'left') {
-              // Left corner: box starts at safeMargin
-              logoX = safeMargin + padding
+              // Left corner: 20px from left edge
+              logoX = padding
             } else {
-              // Right corner: box ends at canvas.width - safeMargin
-              logoX = canvas.width - boxW - safeMargin - padding
+              // Right corner: 20px from right edge
+              logoX = canvas.width - logoW - padding
             }
 
-            // Bottom corner with offset: positioned higher on canvas
-            logoY = canvas.height - boxH - bottomOffset
+            // Bottom corner: 20px from bottom edge
+            logoY = canvas.height - logoH - padding
 
-            // Ensure box doesn't go off-screen (failsafe)
-            const boxX = logoX - padding
-            const boxY = logoY - padding
+            // Ensure logo doesn't go off-screen (failsafe)
+            logoX = Math.max(0, Math.min(logoX, canvas.width - logoW))
+            logoY = Math.max(0, Math.min(logoY, canvas.height - logoH))
 
-            if (boxX < 0 || boxX + boxW > canvas.width || boxY < 0 || boxY + boxH > canvas.height) {
-              console.warn(`⚠️ Logo box would exceed canvas bounds, adjusting position`)
-              if (logoPosition === 'left') {
-                logoX = Math.max(safeMargin + padding, logoX)
-              } else {
-                logoX = Math.min(canvas.width - boxW - safeMargin - padding, logoX)
-              }
-              logoY = Math.min(canvas.height - boxH - safeMargin - padding, logoY)
-            }
+            console.log(`📍 Position: (${logoX.toFixed(0)}, ${logoY.toFixed(0)}), Size: ${logoW.toFixed(0)}x${logoH.toFixed(0)} - 100% VISIBLE`)
 
-            console.log(`📐 Logo size: ${logoW}x${logoH}, Box: ${boxW}x${boxH}, Position: (${logoX - padding}, ${logoY - padding}) - 100% VISIBLE`)
-
-            // Draw logo directly without background box
+            // Draw logo directly on canvas
             ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
             console.log(`✅ Logo drawn on canvas (size: ${logoW}x${logoH}) - 100% VISIBLE`)
           } catch (err) {
@@ -395,23 +394,31 @@ export default function ResultPage() {
         console.log(`✅ Image ${imageId} complete - stored in state`)
       } catch (err) {
         console.error(`❌ Error processing image ${imageId}:`, err)
+        console.warn(`⚠️ Falling back to original image without logo overlay`)
         // Show original image if overlay fails
         setImagesWithLogo(prev => ({ ...prev, [imageId]: imageUrl }))
       }
     }
 
-    // Process ALL 4 images
+    // Process ALL 4 images in parallel for faster results
     console.log(`\n${'='.repeat(60)}`)
-    console.log(`🎨 OVERLAY: Processing ${result.images.length} images for user`)
+    console.log(`🎨 OVERLAY: Processing ${result.images.length} images for user (PARALLEL)`)
     console.log(`📌 Logo available: ${!!userLogo}`)
     console.log(`📍 Logo position: ${logoPosition}`)
     console.log(`🧪 Test mode: ${testOverlay}`)
     console.log(`${'='.repeat(60)}`)
 
-    // Apply overlay to ALL images
-    result.images.forEach((img, idx) => {
-      console.log(`➡️ Queuing image ${idx + 1}/4 (${img.id})`)
-      applyLogoToImage(img.url, userLogo || null, img.id)
+    // Apply overlay to ALL images in parallel
+    const overlayPromises = result.images.map((img, idx) => {
+      console.log(`⏳ Starting image ${idx + 1}/4 (${img.id})`)
+      return applyLogoToImage(img.url, userLogo || null, img.id)
+    })
+    
+    // Wait for all to complete (but don't fail on individual errors)
+    Promise.allSettled(overlayPromises).then((results) => {
+      const succeeded = results.filter(r => r.status === 'fulfilled').length
+      const failed = results.filter(r => r.status === 'rejected').length
+      console.log(`✅ Overlay processing complete: ${succeeded} succeeded, ${failed} fell back to original`)
     })
   }, [userLogo, result, logoPosition, testOverlay])
 
@@ -443,7 +450,9 @@ export default function ResultPage() {
       const ext = mimeType.includes('png') ? 'png' : mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png'
       const link = document.createElement('a')
       link.href = url
-      link.download = `festival-${result?.eventName || 'image'}-${index + 1}.${ext}`
+      // Format: [Event_Name]_Festivly.jpg (remove spaces and special chars)
+      const eventNameFormatted = (result?.eventName || 'image').replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
+      link.download = `${eventNameFormatted}_Festivly.${ext}`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -452,6 +461,138 @@ export default function ResultPage() {
       console.error('Download failed:', err)
     } finally {
       setDownloading(false)
+    }
+  }
+
+  const generateCaption = (): string => {
+    if (!result) return ''
+    const eventName = result.eventName
+    const industry = result.industry
+    const eventHashtag = eventName.replace(/\s+/g, '')
+    const industryHashtag = industry.replace(/\s+/g, '')
+    return `Happy ${eventName}! Wishing you joy and success. #${eventHashtag} #${industryHashtag}`
+  }
+
+  const handleCopyCaption = async () => {
+    const caption = generateCaption()
+    try {
+      await navigator.clipboard.writeText(caption)
+      setCopiedCaption(true)
+      setTimeout(() => setCopiedCaption(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy caption:', err)
+      alert('Failed to copy caption')
+    }
+  }
+
+  const handleShareImage = async (imageUrl: string, index: number) => {
+    const caption = generateCaption()
+    
+    try {
+      console.log('🔄 Share initiated...')
+      console.log('📱 Checking native share support...')
+      console.log(`User agent: ${navigator.userAgent}`)
+      
+      // Check if navigator.share is available (mobile/newer browsers)
+      const hasNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+      console.log(`Native share available: ${hasNativeShare}`)
+      
+      if (!hasNativeShare) {
+        // Desktop fallback
+        console.log(`⚠️ Native share not available. Using desktop fallback...`)
+        await handleDownloadImage(imageUrl, '', index - 1)
+        
+        // Copy caption to clipboard
+        try {
+          await navigator.clipboard.writeText(caption)
+          setCopiedCaption(true)
+          setTimeout(() => setCopiedCaption(false), 2000)
+        } catch (clipErr) {
+          console.warn('Could not copy caption:', clipErr)
+        }
+        
+        alert(`📱 Image Downloaded!\n\n📲 On Desktop:\n1. Open WhatsApp Web (web.whatsapp.com)\n2. Or Open Instagram.com\n3. Upload the image\n4. Paste caption below:\n\n${caption}`)
+        return
+      }
+      
+      // Try to fetch and share with file
+      console.log(`Fetching image from: ${imageUrl.substring(0, 50)}...`)
+      
+      let file: File | null = null
+      try {
+        const response = await fetch(imageUrl, {
+          headers: {
+            'Accept': 'image/*'
+          }
+        })
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+        
+        const blob = await response.blob()
+        console.log(`✅ Image fetched: ${(blob.size / 1024).toFixed(2)}KB`)
+        file = new File([blob], `${result?.eventName || 'image'}-${index}.png`, { type: 'image/png' })
+      } catch (fetchErr) {
+        console.warn(`⚠️ Could not fetch image (CORS?): ${fetchErr}`)
+        file = null
+      }
+      
+      // Try native share with file if available
+      if (file) {
+        try {
+          console.log(`Attempting to share with file...`)
+          await navigator.share({
+            files: [file],
+            title: result?.eventName || 'Festival Image',
+            text: caption,
+          })
+          console.log(`✅ Share successful`)
+          return
+        } catch (shareErr: any) {
+          console.warn(`File share failed: ${shareErr?.message}. Trying text-only share...`)
+        }
+      }
+      
+      // Fallback: Share caption text only
+      console.log(`Attempting text-only share...`)
+      await navigator.share({
+        title: result?.eventName || 'Festival Image',
+        text: caption,
+      })
+      console.log(`✅ Text share successful`)
+      
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('ℹ️ Share cancelled by user')
+      } else if (err.name === 'NotSupported' || err.message?.includes('NotSupported')) {
+        console.log('ℹ️ Share not supported')
+        // Show desktop fallback
+        await handleDownloadImage(imageUrl, '', index - 1)
+        
+        try {
+          await navigator.clipboard.writeText(caption)
+          setCopiedCaption(true)
+          setTimeout(() => setCopiedCaption(false), 2000)
+        } catch (clipErr) {
+          console.warn('Could not copy caption:', clipErr)
+        }
+        
+        alert(`📱 Image Downloaded!\n\n📲 Desktop Instructions:\n1. Open WhatsApp Web (web.whatsapp.com)\n2. Or Open Instagram.com\n3. Upload the image\n4. Paste caption:\n\n${caption}`)
+      } else {
+        console.error(`❌ Share error: ${err?.message}`)
+        alert(`⚠️ Share error: ${err?.message || 'Unknown error'}\n\nTrying download fallback...`)
+        
+        try {
+          await handleDownloadImage(imageUrl, '', index - 1)
+          await navigator.clipboard.writeText(caption)
+          setCopiedCaption(true)
+          setTimeout(() => setCopiedCaption(false), 2000)
+          alert(`✅ Image downloaded!\n📋 Caption copied to clipboard!\n\n${caption}`)
+        } catch (fallbackErr) {
+          console.error('Fallback failed:', fallbackErr)
+        }
+      }
     }
   }
 
@@ -488,7 +629,7 @@ export default function ResultPage() {
       
       // Small delay to ensure database is updated before navigation
       await new Promise(resolve => setTimeout(resolve, 500))
-      
+        
       alert('✅ Image saved to My Projects!')
       router.push('/projects')
     } catch (err) {
@@ -565,21 +706,24 @@ export default function ResultPage() {
             </div>
           </div>
 
-          {/* Generated Images Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+          {/* Generated Images Grid with Captions */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
             {result.images.map((image, index) => (
-              <div key={image.id} className="w-full overflow-hidden" style={{border: 'none', outline: 'none', boxShadow: 'none'}}>
-                <div className="aspect-square relative group w-full h-full" style={{border: 'none', outline: 'none', boxShadow: 'none'}}>
-                  {/* Show overlaid image if available, otherwise show original */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={imagesWithLogo[image.id] || image.url}
-                    alt={`Generated image ${index + 1}`}
-                    className="w-full h-full object-cover"
-                    style={{border: 'none', outline: 'none', boxShadow: 'none', margin: '0', padding: '0'}}
-                    crossOrigin="anonymous"
-                  />
-                  {imagesWithLogo[image.id] && (
+              <div key={image.id} className="w-full flex flex-col h-full">
+                {/* Card Container - Image + Caption + Buttons */}
+                <div className="bg-slate-800/30 backdrop-blur border border-purple-500/20 rounded-xl overflow-hidden flex flex-col h-full">
+                  
+                  {/* Image Container */}
+                  <div className="aspect-square relative group w-full" style={{border: 'none', outline: 'none', boxShadow: 'none'}}>
+                    {/* Show overlaid image if available, otherwise show original */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imagesWithLogo[image.id] || image.url}
+                      alt={`Generated image ${index + 1}`}
+                      className="w-full h-full object-cover"
+                      style={{border: 'none', outline: 'none', boxShadow: 'none', margin: '0', padding: '0'}}
+                      crossOrigin="anonymous"
+                    />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-end justify-center opacity-0 group-hover:opacity-100 p-4 gap-2 flex-col">
                       <Button
                         onClick={() => handleSaveImage(image.url, image.id, index + 1)}
@@ -596,7 +740,111 @@ export default function ResultPage() {
                         ⬇️ Download
                       </Button>
                     </div>
-                  )}
+                  </div>
+                  
+                  {/* Content Section - Caption + Buttons */}
+                  <div className="flex flex-col gap-4 p-5 flex-1">
+                    
+                    {/* Suggested Caption */}
+                    <div className="bg-gradient-to-br from-purple-900/40 via-slate-800/60 to-slate-900/40 backdrop-blur-md border border-purple-500/50 rounded-lg p-4">
+                      <p className="text-xs font-bold text-purple-400 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M11 15H9v2h2v-2zm4-4H9v2h6v-2zm3-7H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2zm-1 16H7V5h10v15z"/>
+                        </svg>
+                        Suggested Caption
+                      </p>
+                      <div className="flex items-start gap-2">
+                        {/* Caption Box */}
+                        <div className="flex-1 bg-slate-950/80 border-2 border-purple-500/60 rounded-lg p-3">
+                          <p className="text-xs text-white leading-relaxed whitespace-pre-wrap break-words font-medium">
+                            {generateCaption()}
+                          </p>
+                        </div>
+
+                        {/* Copy Button with Official Clipboard Icon */}
+                        <button
+                          onClick={handleCopyCaption}
+                          className={`shrink-0 px-3 py-3 font-semibold rounded-lg transition-all duration-200 text-xs shadow-lg hover:shadow-xl active:scale-95 whitespace-nowrap flex items-center justify-center ${
+                            copiedCaption
+                              ? 'bg-green-600 text-white border border-green-400/50'
+                              : 'bg-purple-600 hover:bg-purple-700 text-white border border-purple-400/50'
+                          }`}
+                          title="Copy caption to clipboard"
+                        >
+                          {copiedCaption ? (
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Social Sharing Buttons */}
+              
+<div className="grid grid-cols-2 gap-3">
+
+  {/* WhatsApp Button */}
+  <button
+    type="button"
+    onClick={() =>
+      handleShareImage(
+        imagesWithLogo[image.id] || image.url,
+        index + 1
+      )
+    }
+    title="Share to WhatsApp"
+    className="
+      flex items-center justify-center gap-2
+      border border-green-500
+      text-green-600
+      bg-transparent
+      rounded-lg
+      py-3 px-3
+      text-sm font-semibold
+      transition-all duration-200
+      hover:bg-green-500 hover:text-white
+      active:scale-95
+    "
+  >
+    <FaWhatsapp className="w-5 h-5" />
+    WhatsApp
+  </button>
+
+  {/* Instagram Button */}
+  <button
+    type="button"
+    onClick={() =>
+      handleShareImage(
+        imagesWithLogo[image.id] || image.url,
+        index + 1
+      )
+    }
+    title="Share to Instagram"
+    className="
+      flex items-center justify-center gap-2
+      border border-pink-500
+      text-pink-600
+      bg-transparent
+      rounded-lg
+      py-3 px-3
+      text-sm font-semibold
+      transition-all duration-200
+      hover:bg-gradient-to-r hover:from-pink-500 hover:to-rose-600 hover:text-white
+      active:scale-95
+    "
+  >
+    <FaInstagram className="w-5 h-5" />
+    Instagram
+  </button>
+
+</div>
+
+                  </div>
                 </div>
               </div>
             ))}

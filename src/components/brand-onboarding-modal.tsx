@@ -95,8 +95,7 @@ export function BrandOnboardingModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          logoUrl,
-          industryType: selectedIndustry,
+          base64Image: logoUrl,
         }),
       })
 
@@ -108,9 +107,11 @@ export function BrandOnboardingModal({
       const data = await response.json()
       console.log('✅ Brand analysis complete:', data)
 
-      if (data.description) {
-        setBrandStyleContext(data.description)
+      if (data.styleDescription) {
+        setBrandStyleContext(data.styleDescription)
         setShowBrandAnalysis(true)
+      } else {
+        console.warn('⚠️ No styleDescription in response')
       }
     } catch (err: any) {
       console.error('❌ Brand analysis failed:', err)
@@ -202,7 +203,18 @@ export function BrandOnboardingModal({
   }
 
   const handleSave = async () => {
+    console.log('🔍 DEBUG handleSave called with state:', {
+      selectedIndustry,
+      logoFile: !!logoFile,
+      logoPreview: !!logoPreview,
+      uploadedLogoUrl,
+      brandStyleContext,
+      userId,
+      userEmail,
+    })
+
     if (!selectedIndustry) {
+      console.error('❌ No industry selected!')
       setError('Please select your business industry')
       return
     }
@@ -214,31 +226,44 @@ export function BrandOnboardingModal({
       // Upload logo if provided (and not already uploaded during analysis)
       let logoUrl: string | null = uploadedLogoUrl
       if (logoFile && !uploadedLogoUrl) {
+        console.log('📤 Uploading logo before save...')
         logoUrl = await uploadLogoToSupabase()
+        console.log('✅ Logo uploaded, URL:', logoUrl)
       }
 
       setUploadProgress('Saving profile...')
+
+      const profileData = {
+        id: userId,
+        email: userEmail,
+        industry_type: selectedIndustry,
+        brand_logo_url: logoUrl,
+        brand_style_context: brandStyleContext || null,
+      }
+
+      console.log('📝 Sending profile data to API:', profileData)
 
       // Update profile in database
       const response = await fetch('/api/profiles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: userId,
-          email: userEmail,
-          industry_type: selectedIndustry,
-          brand_logo_url: logoUrl,
-          brand_style_context: brandStyleContext || null,
-        }),
+        body: JSON.stringify(profileData),
       })
 
       if (!response.ok) {
         const data = await response.json()
+        console.error('❌ API error response:', data)
         throw new Error(data.error || 'Failed to save profile')
       }
 
       const data = await response.json()
       console.log('✅ Profile saved successfully:', data)
+      console.log('✅ Returned profile data:', {
+        id: data.profile?.id,
+        industry_type: data.profile?.industry_type,
+        brand_logo_url: data.profile?.brand_logo_url,
+        brand_style_context: data.profile?.brand_style_context,
+      })
 
       setUploadProgress(null)
       
@@ -258,38 +283,38 @@ export function BrandOnboardingModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <Card className="bg-white text-black p-8 max-w-lg w-full mx-4 shadow-2xl">
-        <h2 className="text-3xl font-bold mb-2">Welcome to Festivly! 🎉</h2>
-        <p className="text-gray-600 mb-6">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
+      <Card className="bg-white text-black p-4 sm:p-6 md:p-8 w-full max-w-sm sm:max-w-md md:max-w-lg shadow-2xl my-4">
+        <h2 className="text-2xl sm:text-3xl font-bold mb-2">Welcome to Festivly! 🎉</h2>
+        <p className="text-sm sm:text-base text-gray-600 mb-6">
           Let's set up your brand profile to create personalized festival posts.
         </p>
 
         {error && (
-          <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm border border-red-200">
+          <div className="bg-red-100 text-red-700 p-2 sm:p-3 rounded-lg mb-4 text-xs sm:text-sm border border-red-200">
             {error}
           </div>
         )}
 
         {uploadProgress && (
-          <div className="bg-blue-100 text-blue-700 p-3 rounded-lg mb-4 text-sm border border-blue-200">
+          <div className="bg-blue-100 text-blue-700 p-2 sm:p-3 rounded-lg mb-4 text-xs sm:text-sm border border-blue-200">
             {uploadProgress}
           </div>
         )}
 
         {/* Industry Selection */}
         <div className="mb-6">
-          <label className="block text-sm font-semibold mb-3">
+          <label className="block text-xs sm:text-sm font-semibold mb-3">
             Business Industry <span className="text-red-500">*</span>
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {INDUSTRY_OPTIONS.map((industry) => (
               <button
                 key={industry}
                 type="button"
                 onClick={() => setSelectedIndustry(industry)}
                 disabled={loading}
-                className={`p-3 text-left rounded-lg border-2 transition-all text-sm font-medium ${
+                className={`p-2 sm:p-3 text-left rounded-lg border-2 transition-all text-xs sm:text-sm font-medium ${
                   selectedIndustry === industry
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
@@ -303,7 +328,7 @@ export function BrandOnboardingModal({
 
         {/* Logo Upload */}
         <div className="mb-6">
-          <label className="block text-sm font-semibold mb-3">
+          <label className="block text-xs sm:text-sm font-semibold mb-3">
             Business Logo <span className="text-gray-400">(Optional)</span>
           </label>
           
@@ -317,11 +342,11 @@ export function BrandOnboardingModal({
           />
 
           {logoPreview ? (
-            <div className="relative border-2 border-gray-200 rounded-lg p-4">
+            <div className="relative border-2 border-gray-200 rounded-lg p-3 sm:p-4">
               <img
                 src={logoPreview}
                 alt="Logo preview"
-                className="max-h-32 mx-auto object-contain"
+                className="max-h-24 sm:max-h-32 mx-auto object-contain"
               />
               <button
                 type="button"
@@ -331,7 +356,7 @@ export function BrandOnboardingModal({
                   if (fileInputRef.current) fileInputRef.current.value = ''
                 }}
                 disabled={loading}
-                className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-red-600 transition-colors disabled:opacity-50"
+                className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs sm:text-sm hover:bg-red-600 transition-colors disabled:opacity-50"
               >
                 ×
               </button>
@@ -341,11 +366,11 @@ export function BrandOnboardingModal({
               type="button"
               onClick={triggerFileInput}
               disabled={loading}
-              className="w-full border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-400 hover:bg-blue-50 transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6 hover:border-blue-400 hover:bg-blue-50 transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <div className="text-gray-500">
                 <svg
-                  className="mx-auto h-12 w-12 mb-2"
+                  className="mx-auto h-10 sm:h-12 w-10 sm:w-12 mb-2"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -357,7 +382,7 @@ export function BrandOnboardingModal({
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                   />
                 </svg>
-                <p className="text-sm font-medium">Click to upload logo</p>
+                <p className="text-xs sm:text-sm font-medium">Click to upload logo</p>
                 <p className="text-xs text-gray-400 mt-1">PNG, JPG, GIF up to 10MB</p>
               </div>
             </button>
@@ -370,7 +395,7 @@ export function BrandOnboardingModal({
             <Button
               onClick={handleAnalyzeBrand}
               disabled={loading || isAnalyzing}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 sm:py-3 text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isAnalyzing ? 'Analyzing Brand...' : '✨ Analyze My Brand (Optional)'}
             </Button>
@@ -383,7 +408,7 @@ export function BrandOnboardingModal({
         {/* Brand Style Context Editor */}
         {showBrandAnalysis && (
           <div className="mb-6">
-            <label className="block text-sm font-semibold mb-2">
+            <label className="block text-xs sm:text-sm font-semibold mb-2">
               Brand Style Description
             </label>
             <p className="text-xs text-gray-500 mb-2">
@@ -393,24 +418,24 @@ export function BrandOnboardingModal({
               value={brandStyleContext}
               onChange={(e) => setBrandStyleContext(e.target.value)}
               disabled={loading}
-              className="w-full border-2 border-gray-200 rounded-lg p-3 text-sm font-mono min-h-[120px] focus:border-blue-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full border-2 border-gray-200 rounded-lg p-2 sm:p-3 text-xs sm:text-sm font-mono min-h-[100px] sm:min-h-[120px] focus:border-blue-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
               placeholder="Your brand style description will appear here..."
             />
           </div>
         )}
 
         {/* Action Buttons */}
-        <div className="flex gap-3">
+        <div className="flex gap-2 sm:gap-3">
           <Button
             onClick={handleSave}
             disabled={loading || !selectedIndustry}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 sm:py-3 text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Saving...' : 'Save & Continue'}
           </Button>
         </div>
 
-        <p className="text-xs text-gray-500 mt-4 text-center">
+        <p className="text-xs text-gray-500 mt-3 sm:mt-4 text-center">
           You can update these settings later from your profile settings.
         </p>
       </Card>

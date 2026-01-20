@@ -307,7 +307,7 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
         const supabase = getSupabaseClient()
         const { data, error } = await supabase
           .from('profiles')
-          .select('industry_type, subscription_plan, free_images_generated, brand_style_context')
+          .select('industry_type, subscription_plan, free_images_generated, brand_style_context, generations_today, last_reset_date')
           .eq('id', userId)
           .single()
 
@@ -324,7 +324,60 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
           
           userSubscription = data.subscription_plan || 'free'
           brandStyleContext = data.brand_style_context || null
-          // imagesGenerated = DISABLED - all users unlimited
+          
+          // ========== DAILY GENERATION LIMIT CHECK (STEP A & B) ==========
+          console.log(`\n📊 DAILY LIMIT CHECK:`)
+          console.log(`   Subscription: ${userSubscription}`)
+          console.log(`   Current generations today: ${data.generations_today || 0}`)
+          console.log(`   Last reset date: ${data.last_reset_date}`)
+          
+          // Only enforce limit for FREE users
+          if (userSubscription === 'free') {
+            const lastResetDate = data.last_reset_date ? new Date(data.last_reset_date) : null
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            
+            // STEP A: Check if last_reset_date is today
+            const isToday = lastResetDate && 
+              lastResetDate.getFullYear() === today.getFullYear() &&
+              lastResetDate.getMonth() === today.getMonth() &&
+              lastResetDate.getDate() === today.getDate()
+            
+            console.log(`   Is today: ${isToday}`)
+            
+            let generationsToday = data.generations_today || 0
+            
+            // STEP A: If NOT today, reset counter and update date
+            if (!isToday) {
+              console.log(`   ✅ Date change detected. Resetting counter to 0 and updating date.`)
+              generationsToday = 0
+              await supabase
+                .from('profiles')
+                .update({
+                  generations_today: 0,
+                  last_reset_date: new Date().toISOString(),
+                })
+                .eq('id', userId)
+            }
+            
+            // STEP B: Check if user hit the 5 generation limit
+            console.log(`   Checking limit: ${generationsToday} / 5`)
+            if (generationsToday >= 5) {
+              console.warn(`🚫 BLOCKED: User ${userId} reached daily limit (${generationsToday}/5 generations done today)`)
+              return NextResponse.json(
+                {
+                  success: false,
+                  images: [],
+                  prompt: '',
+                  error: 'DAILY_LIMIT_REACHED',
+                  showPricingModal: true,
+                },
+                { status: 429 } // Too Many Requests
+              )
+            }
+            console.log(`   ✅ User has ${5 - generationsToday} generation(s) remaining today`)
+          }
+          // ========== END DAILY GENERATION LIMIT CHECK ==========
           
           console.log(`📊 User profile loaded: subscription=${userSubscription}, industry=${userIndustry}, hasIndustry=${userHasIndustry}, hasBrandStyle=${!!brandStyleContext}`)
           if (brandStyleContext) {
@@ -625,35 +678,54 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
       console.log(`   ${idx + 1}. ${type}: ${img.url.substring(0, 80)}...`)
     })
 
-    // INCREMENT COUNTER: Increment free user's generation count after successful generation (DISABLED FOR NOW)
-    // This tracks how many times they've generated (not how many images)
-    // CRITICAL: Use database-level atomic update to prevent race conditions in production
-    // if (userId && userSubscription === 'free' && imagesGenerated === 0) {
-    //   try {
-    //     const supabase = getSupabaseClient()
-    //     
-    //     // Use RPC or direct update with WHERE clause to ensure atomicity
-    //     // Only increment if still at 0 to prevent race condition
-    //     const { error: updateError, data: updateData } = await supabase
-    //       .from('profiles')
-    //       .update({ free_images_generated: 1 })
-    //       .eq('id', userId)
-    //       .eq('free_images_generated', 0) // Only update if still at 0
-    //       .select('free_images_generated')
-    //     
-    //     if (updateError) {
-    //       console.error('❌ Failed to update generation count:', updateError?.message)
-    //     } else if (updateData && updateData.length > 0) {
-    //       console.log(`✅ Updated user ${userId} generation count: 0 → 1`)
-    //     } else {
-    //       // Update failed because free_images_generated was not 0 (someone else incremented)
-    //       console.warn(`⚠️ Could not increment user ${userId} - already incremented by another request`)
-    //     }
-    //   } catch (err: any) {
-    //     console.error('❌ Failed to update generation count:', err?.message)
-    //     // Don't block the response if increment fails - images already generated
-    //   }
-    // }
+    // INCREMENT COUNTER: Increment free user's generation count after successful generation
+    // This uses atomic increment to prevent race conditions in production
+    if (userId && userSubscription === 'free') {
+      try {
+        const supabase = getSupabaseClient()
+        
+        console.log(`\n📊 INCREMENTING GENERATION COUNT:`)
+        console.log(`   User ID: ${userId}`)
+        
+        // Use atomic increment to ensure no race conditions
+        const { error: updateError } = await supabase
+          .rpc('increment_daily_generations', {
+            user_id: userId
+          })
+        
+        if (updateError) {
+          // Fallback to direct update if RPC doesn't exist yet
+          console.warn(`⚠️ RPC not available, using direct update: ${updateError.message}`)
+          
+          // Get current value
+          const { data: currentData } = await supabase
+            .from('profiles')
+            .select('generations_today')
+            .eq('id', userId)
+            .single()
+          
+          const currentCount = (currentData?.generations_today || 0) + 1
+          
+          const { error: fallbackError } = await supabase
+            .from('profiles')
+            .update({ 
+              generations_today: currentCount
+            })
+            .eq('id', userId)
+          
+          if (fallbackError) {
+            console.error(`❌ Failed to increment generation count: ${fallbackError.message}`)
+          } else {
+            console.log(`✅ Generation count incremented successfully (direct update)`)
+          }
+        } else {
+          console.log(`✅ Generation count incremented successfully (atomic RPC)`)
+        }
+      } catch (err: any) {
+        console.error(`❌ Failed to increment generation count: ${err?.message}`)
+        // Don't block the response if increment fails - images already generated successfully
+      }
+    }
 
     // Check if free user - show pricing modal after 1st generation (DISABLED FOR NOW)
     // const showPricingModal = userSubscription === 'free' && imagesGenerated === 0

@@ -178,6 +178,22 @@ export default function EditorPage() {
         }),
       })
 
+      const result = await response.json()
+
+      // Check for daily limit error (429 Too Many Requests)
+      if (response.status === 429) {
+        console.warn('⚠️ Daily limit reached (429)')
+        setGenerating(false)
+        setSelectedEvent(null)
+        setError('Daily limit reached. Come back tomorrow!')
+        
+        // Show pricing modal if flagged in response
+        // if (result.showPricingModal) {
+        //   setTimeout(() => setShowUpgradeModal(true), 500)
+        // }
+        return // Don't continue
+      }
+
       // Check for 402 Payment Required response (DISABLED FOR NOW)
       // if (response.status === 402) {
       //   console.warn('⚠️ Upgrade required (402)')
@@ -192,8 +208,6 @@ export default function EditorPage() {
         console.error('Generation API error')
         // Just silently continue - empty result will be handled gracefully
       }
-
-      const result = await response.json()
       
       // Store result and redirect to result page (even if empty)
       sessionStorage.setItem('generatedResult', JSON.stringify(result))
@@ -303,7 +317,7 @@ export default function EditorPage() {
                       e.stopPropagation()
                       if (!isDisabled) handleEventClick(event.id)
                     }}
-                    disabled={isDisabled}
+                    disabled={isDisabled ?? false}
                   >
                     {isDisabled ? 'Loading...' : 'Generate 4 Images'}
                   </Button>

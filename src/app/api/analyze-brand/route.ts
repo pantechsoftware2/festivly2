@@ -1,11 +1,14 @@
 /**
  * API Route: /api/analyze-brand
  * Analyzes a brand image (from URL or base64) and extracts style description
- * Uses Gemini 1.5 Flash vision model for image analysis
+ * Uses Gemini 2.0 Flash vision model for image analysis
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+
+// Debug: Log if API key is loaded
+console.log('🔑 API Key Status:', process.env.GOOGLE_GENERATIVE_AI_API_KEY ? 'LOADED' : 'NOT LOADED')
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || '')
 
@@ -86,12 +89,12 @@ async function downloadImageAsBase64(imageUrl: string): Promise<string | null> {
 }
 
 /**
- * Analyze image using Gemini 1.5 Flash vision model
+ * Analyze image using Gemini 2.0 Flash vision model
  */
 async function analyzeImageWithGemini(imageData: string): Promise<string> {
-  console.log(`🔍 Analyzing image with Gemini 1.5 Flash...`)
+  console.log(`🔍 Analyzing image with Gemini 2.0 Flash...`)
   
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
   
   const systemPrompt = `You are an expert Creative Director. Analyze this image and extract a comma-separated style description focusing ONLY on: Color Palette (hex codes and names), Lighting Style (e.g., golden hour, studio, flat lay), and Vibe (e.g., corporate, playful, luxury, minimalist). Output raw text only.`
   
@@ -183,10 +186,25 @@ export async function POST(request: NextRequest): Promise<NextResponse<AnalyzeBr
           { status: 400 }
         )
       }
-    } else if (base64Image) {
-      console.log(`🎯 Processing base64 image`)
-      imageToAnalyze = base64Image
+     } else if (base64Image) {
+  console.log(`🎯 Processing image input`)
+
+  // If frontend sent a URL instead of base64
+  if (base64Image.startsWith('http')) {
+    imageToAnalyze = await downloadImageAsBase64(base64Image)
+
+    if (!imageToAnalyze) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to download image from URL' },
+        { status: 400 }
+      )
     }
+  } else {
+    // True base64 or data URL
+    imageToAnalyze = base64Image
+  }
+}
+
 
     if (!imageToAnalyze) {
       return NextResponse.json(
