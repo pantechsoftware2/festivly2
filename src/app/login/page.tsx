@@ -8,11 +8,13 @@ import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
+import { SimpleSignUpModal } from '@/components/simple-signup-modal'
 
 function SignInContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showSignUpModal, setShowSignUpModal] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -177,15 +179,27 @@ function SignInContent() {
 
           <p className="text-center text-gray-600 mt-4 sm:mt-6 text-xs sm:text-sm">
             Don&apos;t have an account?{' '}
-            <a
-              href="/signup"
-              className="text-black hover:underline font-semibold"
+            {/* OLD: Link to /signup page - now using SimpleSignUpModal instead */}
+            <button
+              onClick={() => setShowSignUpModal(true)}
+              className="text-black hover:underline font-semibold bg-none border-none cursor-pointer"
             >
               Sign Up
-            </a>
+            </button>
           </p>
         </div>
       </Card>
+
+      {/* SIGN UP MODAL - Using SimpleSignUpModal for all signups */}
+      <SimpleSignUpModal
+        isOpen={showSignUpModal}
+        onClose={() => setShowSignUpModal(false)}
+        onSuccess={() => {
+          setShowSignUpModal(false)
+          // Redirect to login after signup
+          router.push('/login?signup=success')
+        }}
+      />
     </div>
   )
 }

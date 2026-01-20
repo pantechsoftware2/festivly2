@@ -7,12 +7,14 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { Menu, X } from 'lucide-react'
+import { SimpleSignUpModal } from '@/components/simple-signup-modal'
 
 export function Header() {
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
   const [signingOut, setSigningOut] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [showSignUpModal, setShowSignUpModal] = useState(false)
 
   const handleSignOut = async () => {
     try {
@@ -81,11 +83,14 @@ export function Header() {
                   Sign In
                 </Button>
               </Link>
-              <Link href="/signup">
-                <Button size="sm" className="bg-white hover:bg-white/90 text-black font-semibold text-xs sm:text-sm">
-                  Sign Up
-                </Button>
-              </Link>
+              {/* OLD: Link to /signup page - now using SimpleSignUpModal instead */}
+              <Button 
+                size="sm" 
+                onClick={() => setShowSignUpModal(true)}
+                className="bg-white hover:bg-white/90 text-black font-semibold text-xs sm:text-sm"
+              >
+                Sign Up
+              </Button>
             </>
           )}
         </div>
@@ -135,16 +140,31 @@ export function Header() {
                     Sign In
                   </Button>
                 </Link>
-                <Link href="/signup" onClick={() => setMobileMenuOpen(false)}>
-                  <Button className="w-full bg-white hover:bg-white/90 text-black font-semibold justify-start">
-                    Sign Up
-                  </Button>
-                </Link>
+                {/* OLD: Link to /signup page - now using SimpleSignUpModal instead */}
+                <Button 
+                  onClick={() => {
+                    setShowSignUpModal(true)
+                    setMobileMenuOpen(false)
+                  }}
+                  className="w-full bg-white hover:bg-white/90 text-black font-semibold justify-start"
+                >
+                  Sign Up
+                </Button>
               </>
             )}
           </div>
         </div>
       )}
+
+      {/* SIGN UP MODAL - Using SimpleSignUpModal for all signups */}
+      <SimpleSignUpModal
+        isOpen={showSignUpModal}
+        onClose={() => setShowSignUpModal(false)}
+        onSuccess={() => {
+          setShowSignUpModal(false)
+          setMobileMenuOpen(false)
+        }}
+      />
     </header>
   )
 }
