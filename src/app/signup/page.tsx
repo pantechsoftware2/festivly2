@@ -1,67 +1,35 @@
-// 'use client'
+'use client'
 
-// export const dynamic = 'force-dynamic'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { SimpleSignUpModal } from '@/components/simple-signup-modal'
+import { useState } from 'react'
 
-// import { useState, useEffect, useMemo } from 'react'
-// import { useRouter, useSearchParams } from 'next/navigation'
-// import { useAuth } from '@/lib/auth-context'
-// import { Button } from '@/components/ui/button'
-// import { Input } from '@/components/ui/input'
-// import { Card } from '@/components/ui/card'
-// import { Suspense } from 'react'
-// import { createClient } from '@/lib/supabase'
+export default function SignUpPage() {
+  const router = useRouter()
+  const [showSignUpModal, setShowSignUpModal] = useState(true)
 
-// export default function SignUp() {
-//   return (
-//     <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading...</div>}>
-//       <SignUpContent />
-//     </Suspense>
-//   );
-// }
+  // Auto-redirect to home after modal closes
+  useEffect(() => {
+    if (!showSignUpModal) {
+      router.push('/')
+    }
+  }, [showSignUpModal, router])
 
-// function SignUpContent() {
-//   const router = useRouter()
-
-//   // Auto-redirect to home - SimpleSignUpModal is now used everywhere
-//   useEffect(() => {
-//     router.push('/')
-//   }, [router])
-  
-//   // If no prompt in URL, check sessionStorage (for users returning from Google Sign-In)
-//   if (!prompt && typeof window !== 'undefined') {
-//     prompt = sessionStorage.getItem('pending_prompt')
-//   }
-  
-//   const { signUpWithEmail, signInWithGoogle, user, loading: authLoading } = useAuth()
-//   // Memoize createClient to prevent multiple instances
-//   const supabase = useMemo(() => createClient(), [])
-
-//   // Auto-redirect if already logged in (but not during signup process)
-//   useEffect(() => {
-//     if (!authLoading && user && !loading) {
-//       router.push('/')
-//     }
-//   }, [user, authLoading, router, loading])
-
-//   const handleSignUp = async (e: React.FormEvent) => {
-//     e.preventDefault()
-
-//     if (!email || !password) {
-//       setError('Please enter email and password')
-//       return
-//     }
-
-//     if (password.length < 6) {
-//       setError('Password must be at least 6 characters')
-//       return
-//     }
-
-//     try {
-//       setLoading(true)
-//       setError(null)
-      
-//       // Sign up user
-//       const { data: authData, error: signUpError } = await supabase.auth.signUp({
+  return (
+    <div className="min-h-screen bg-black flex items-center justify-center">
+      {/* Using SimpleSignUpModal for all signups */}
+      <SimpleSignUpModal
+        isOpen={showSignUpModal}
+        onClose={() => setShowSignUpModal(false)}
+        onSuccess={() => {
+          setShowSignUpModal(false)
+          router.push('/')
+        }}
+      />
+    </div>
+  )
+}
 //         email,
 //         password
 //       })
