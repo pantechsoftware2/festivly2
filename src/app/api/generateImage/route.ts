@@ -180,23 +180,11 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
     const body: GenerateImageRequest = await request.json()
     const { eventId, prompt: userPrompt, userId, requestId } = body
 
-    // NEW: Check for duplicate requestId (indicates duplicate submission from client)
+    // Duplicate detection DISABLED: Allow same event to generate multiple times
     if (requestId) {
-      if (processedRequestIds.has(requestId)) {
-        console.log(`🚫 DUPLICATE DETECTED: RequestId ${requestId} already processed. REJECTING.`)
-        return NextResponse.json(
-          {
-            success: false,
-            images: [],
-            prompt: '',
-            error: 'Duplicate request detected - this request was already submitted',
-          },
-          { status: 400 }
-        )
-      }
-      console.log(`✅ RequestId validated: ${requestId}`)
+      console.log(`✅ RequestId: ${requestId} - allowing multiple generations of same event`)
     } else {
-      console.warn(`⚠️ No requestId provided - cannot detect duplicates`)
+      console.warn(`⚠️ No requestId provided`)
     }
 
     // GOOGLE AUTH DEBUG: Log userId presence
@@ -247,12 +235,12 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
     try {
       const result = await requestPromise
       
-      // NEW: Mark requestId as processed to prevent future duplicates
-      if (requestId) {
-        processedRequestIds.add(requestId)
-        requestIdTimestamps.set(requestId, Date.now())
-        console.log(`✅ RequestId marked as processed: ${requestId}`)
-      }
+      // Mark requestId as processed - DISABLED to allow multiple generations of same event
+      // if (requestId) {
+      //   processedRequestIds.add(requestId)
+      //   requestIdTimestamps.set(requestId, Date.now())
+      //   console.log(`✅ RequestId marked as processed: ${requestId}`)
+      // }
       
       // Cache the result data (not the response object)
       const responseClone = result.clone()

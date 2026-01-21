@@ -266,7 +266,7 @@ export default function ResultPage() {
           const img = new Image()
           img.crossOrigin = 'anonymous'
           img.referrerPolicy = 'no-referrer'
-          const timeout = setTimeout(() => reject(new Error('timeout')), 30000)
+          const timeout = setTimeout(() => reject(new Error('timeout')), 60000)
           img.onload = () => { clearTimeout(timeout); resolve(img) }
           img.onerror = () => { clearTimeout(timeout); reject(new Error('load failed')) }
           img.src = imageUrl
@@ -301,7 +301,7 @@ export default function ResultPage() {
               const img = new Image()
               img.crossOrigin = 'anonymous'
               img.referrerPolicy = 'no-referrer'
-              const timeout = setTimeout(() => reject(new Error('timeout')), 20000)
+              const timeout = setTimeout(() => reject(new Error('logo load timeout')), 60000)
               img.onload = () => { clearTimeout(timeout); resolve(img) }
               img.onerror = () => { clearTimeout(timeout); reject(new Error('load failed')) }
               img.src = logoUrl
@@ -913,12 +913,7 @@ export default function ResultPage() {
                 <p className="font-semibold text-white">Industry</p>
                 <p>{result.industry}</p>
               </div>
-              <div className="col-span-2">
-                <p className="font-semibold text-white mb-2">Prompt Used</p>
-                <p className="text-xs bg-slate-900/50 p-3 rounded border border-purple-500/20 max-h-24 overflow-y-auto">
-                  {result.prompt}
-                </p>
-              </div>
+
             </div>
           </div>
         </div>
