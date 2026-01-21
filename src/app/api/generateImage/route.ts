@@ -17,10 +17,10 @@ const requestResults = new Map<string, any>()
 const processedRequestIds = new Set<string>() // Track recently processed request IDs
 const requestIdTimestamps = new Map<string, number>() // Track when each requestId was processed
 
-// Clean up old requestIds every 5 minutes (to prevent memory leak)
+// Clean up old requestIds every 1 minutes (to prevent memory leak)
 setInterval(() => {
   const now = Date.now()
-  const CLEANUP_AGE = 3 * 60 * 1000 // 3 minutes
+  const CLEANUP_AGE = 1 * 60 * 1000 // 3 minutes
   
   for (const [requestId, timestamp] of requestIdTimestamps.entries()) {
     if (now - timestamp > CLEANUP_AGE) {
@@ -29,7 +29,7 @@ setInterval(() => {
       console.log(`🧹 Cleaned up old requestId: ${requestId}`)
     }
   }
-}, 5 * 60 * 1000)
+}, 1 * 60 * 1000)
 
 /**
  * Add logo overlay to base64 image (using Canvas API via jimp or simple approach)
@@ -325,6 +325,11 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
           userSubscription = data.subscription_plan || 'free'
           brandStyleContext = data.brand_style_context || null
           
+          console.log(`📊 User profile loaded: subscription=${userSubscription}, industry=${userIndustry}, hasIndustry=${userHasIndustry}, hasBrandStyle=${!!brandStyleContext}`)
+          if (brandStyleContext) {
+            console.log(`🎨 Brand style context loaded: "${brandStyleContext.substring(0, 80)}..."`)
+          }
+          
           // ========== DAILY GENERATION LIMIT CHECK (STEP A & B) ==========
           console.log(`\n📊 DAILY LIMIT CHECK:`)
           console.log(`   Subscription: ${userSubscription}`)
@@ -378,11 +383,6 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
             console.log(`   ✅ User has ${5 - generationsToday} generation(s) remaining today`)
           }
           // ========== END DAILY GENERATION LIMIT CHECK ==========
-          
-          console.log(`📊 User profile loaded: subscription=${userSubscription}, industry=${userIndustry}, hasIndustry=${userHasIndustry}, hasBrandStyle=${!!brandStyleContext}`)
-          if (brandStyleContext) {
-            console.log(`🎨 Brand style context loaded: ${brandStyleContext.substring(0, 100)}...`)
-          }
         } else if (error) {
           console.warn(`⚠️ Profile lookup failed: ${error.message}. Using defaults.`)
         }
@@ -476,70 +476,69 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
     let base64Images: string[] = []
 
     try {
-      console.log(`\n🎬 HYBRID BATCH GENERATION: 2 Clean Images + 2 Text Images`)
+      console.log(`\n🎬 HYBRID BATCH GENERATION: 2 Clean Images + 2 Text Images (SEQUENTIAL)`)
       
-      // Step 1: Get the two prompts (one clean, one with text)
-      // For clean: use the finalPrompt we already generated (which has NO text if eventId provided)
-      // For text: regenerate with includeText=true flag
-      const cleanPrompt = finalPrompt
-      let textPrompt = await generateSmartPrompt(eventName, userIndustry, brandStyleContext, true)
+      // Step 1: Generate the two separate prompts (each with clear instructions)
+      console.log(`\n⚡ Generating prompts...`)
+      const cleanPrompt = await generateSmartPrompt(eventName, userIndustry, brandStyleContext, false)
+      const textPrompt = await generateSmartPrompt(eventName, userIndustry, brandStyleContext, true)
       
-      // Also enhance text prompt for premium users
+      // Enhance for premium users
+      let finalCleanPrompt = cleanPrompt
+      let finalTextPrompt = textPrompt
       if (userSubscription === 'pro' || userSubscription === 'pro plus') {
-        textPrompt = enhancePromptForPremium(textPrompt, userSubscription)
+        finalCleanPrompt = enhancePromptForPremium(cleanPrompt, userSubscription)
+        finalTextPrompt = enhancePromptForPremium(textPrompt, userSubscription)
       }
       
-      console.log(`\n📄 CLEAN PROMPT (for 2 images, no text):`)
+      console.log(`\n📄 CLEAN PROMPT (2 images, NO text):`)
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-      console.log(cleanPrompt)
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-      
-      console.log(`\n✍️  TEXT PROMPT (for 2 images, with text):`)
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-      console.log(textPrompt)
+      console.log(finalCleanPrompt.substring(0, 300))
+      console.log(`...`)
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
       
-      // Step 2: Launch 2 PARALLEL requests to Imagen API
-      console.log(`\n⚡ Launching 2 PARALLEL requests to Imagen API...`)
-      console.log(`   Request A: Clean images (sampleCount: 2)`)
-      console.log(`   Request B: Text images (sampleCount: 2)`)
-      console.log(`   Expected total: 4 images (2 + 2)`)
+      console.log(`\n✍️  TEXT PROMPT (2 images, WITH headline):`)
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+      console.log(finalTextPrompt.substring(0, 300))
+      console.log(`...`)
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
       
-      const cleanImagesPromise = generateImages({
-        prompt: cleanPrompt,
-        sampleCount: 2,  // CRITICAL: Only 2 images, NOT more
+      // Step 2: Request A - Generate 2 CLEAN images (SEQUENTIAL, not parallel)
+      console.log(`\n⚡ REQUEST A: Generating 2 CLEAN images (NO text, pure visual)...`)
+      const cleanImages = await generateImages({
+        prompt: finalCleanPrompt,
+        sampleCount: 2,
       })
+      console.log(`✅ Got ${cleanImages.length} clean images`)
       
-      const textImagesPromise = generateImages({
-        prompt: textPrompt,
-        sampleCount: 2,  // CRITICAL: Only 2 images, NOT more
+      // Wait 8 seconds before next request to avoid quota contention
+      console.log(`⏳ Waiting 8 seconds before text images (quota management)...`)
+      await new Promise(resolve => setTimeout(resolve, 8000))
+      
+      // Step 3: Request B - Generate 2 TEXT images (SEQUENTIAL, after clean images done)
+      console.log(`\n⚡ REQUEST B: Generating 2 TEXT images (WITH headline poster style)...`)
+      const textImages = await generateImages({
+        prompt: finalTextPrompt,
+        sampleCount: 2,
       })
+      console.log(`✅ Got ${textImages.length} text images`)
       
-      // Step 3: Wait for both to complete
-      const [cleanImages, textImages] = await Promise.all([cleanImagesPromise, textImagesPromise])
+      // Step 4: Combine into 4 images
+      console.log(`\n🔍 Validating batch:`)
+      console.log(`   Clean images: ${cleanImages.length} (expected: 2)`)
+      console.log(`   Text images: ${textImages.length} (expected: 2)`)
       
-      console.log(`✅ Batch complete: ${cleanImages.length} clean + ${textImages.length} text images`)
-      
-      // CRITICAL: Ensure exactly 2 images from each request
-      console.log(`\n🔍 Validating image counts:`)
-      console.log(`   Clean images received: ${cleanImages.length} (expected: 2)`)
-      console.log(`   Text images received: ${textImages.length} (expected: 2)`)
-      
-      // If we got more than 2 from either, truncate to exactly 2
+      // Trim to exactly 2 each
       const cleanTrimmed = cleanImages.slice(0, 2)
       const textTrimmed = textImages.slice(0, 2)
       
-      if (cleanTrimmed.length !== cleanImages.length) {
-        console.warn(`⚠️  TRIM: Clean images truncated from ${cleanImages.length} to ${cleanTrimmed.length}`)
-      }
-      if (textTrimmed.length !== textImages.length) {
-        console.warn(`⚠️  TRIM: Text images truncated from ${textImages.length} to ${textTrimmed.length}`)
+      if (cleanTrimmed.length < 2 || textTrimmed.length < 2) {
+        console.warn(`⚠️  WARNING: Expected 2+2 images, got ${cleanTrimmed.length}+${textTrimmed.length}`)
       }
       
-      // Step 4: Combine into one array of 4 images (GUARANTEED 4)
       base64Images = [...cleanTrimmed, ...textTrimmed]
       
-      console.log(`\n✅ FINAL IMAGE COUNT: ${base64Images.length} images (2 clean + 2 text)`)
+      console.log(`\n✅ FINAL IMAGE COUNT: ${base64Images.length} images (${cleanTrimmed.length} clean + ${textTrimmed.length} text)`)
 
       console.log(`🎨 API returned ${base64Images.length} base64 images`)
       
@@ -802,8 +801,9 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
     if (userBrandLogo && userBrandLogo.length > 0) {
       response.brandLogoUrl = userBrandLogo
       console.log(`✅ Response includes brand logo URL for client-side compositing`)
+      console.log(`   Logo URL: ${userBrandLogo.substring(0, 100)}...`)
     } else {
-      console.log(`✅ Response without brand logo - clean images will be delivered`)
+      console.log(`ℹ️ Response without brand logo - clean images will be delivered (userBrandLogo: ${userBrandLogo})`)
     }
     
     return NextResponse.json(response)

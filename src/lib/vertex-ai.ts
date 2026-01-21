@@ -110,6 +110,7 @@ async function probeModelAvailability(modelId: string, accessToken: string, proj
 async function ensureImagenModelSelected(accessToken: string): Promise<string> {
   const now = Date.now()
   if (_selectedImagenModel && now - _lastModelCheck < MODEL_CHECK_TTL) {
+    console.log(`✅ Using cached model: ${_selectedImagenModel}`)
     return _selectedImagenModel
   }
 
@@ -117,17 +118,27 @@ async function ensureImagenModelSelected(accessToken: string): Promise<string> {
   const location = process.env.GOOGLE_CLOUD_REGION || 'us-central1'
 
   console.log(`🔍 Probing Imagen models...`)
-  // Probe Imagen-4 candidates
-  for (const candidate of IMAGEN4_CANDIDATES) {
+  // Try Imagen-4 directly first (most likely to work)
+  const primaryModel = 'imagen-4.0-generate-001'
+  console.log(`   Trying: ${primaryModel}`)
+  const result = await probeModelAvailability(primaryModel, accessToken, project, location)
+  if (result.available) {
+    console.log(`✅ Model available: ${primaryModel}`)
+    _selectedImagenModel = primaryModel
+    _lastModelCheck = Date.now()
+    return _selectedImagenModel
+  }
+
+  // If primary failed, try other candidates
+  console.log(`   ⚠️ ${primaryModel}: checking alternatives...`)
+  for (const candidate of IMAGEN4_CANDIDATES.slice(1)) {
     console.log(`   Trying: ${candidate}`)
-    const result = await probeModelAvailability(candidate, accessToken, project, location)
-    if (result.available) {
+    const probeResult = await probeModelAvailability(candidate, accessToken, project, location)
+    if (probeResult.available) {
       console.log(`✅ Model available: ${candidate}`)
       _selectedImagenModel = candidate
       _lastModelCheck = Date.now()
       return _selectedImagenModel
-    } else {
-      console.log(`   ❌ ${candidate}: not available`)
     }
   }
 
