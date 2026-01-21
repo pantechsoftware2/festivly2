@@ -309,34 +309,27 @@ export default function ResultPage() {
 
             console.log(`✅ Logo loaded: ${logoImg.width}x${logoImg.height}`)
 
-            // SMART LOGO RESIZING - Maintain aspect ratio with max-size constraints
-            const MAX_WIDTH = 200   // Maximum width: 200px
-            const MAX_HEIGHT = 150  // Maximum height: 150px
-            const padding = 20      // 20px padding from edges
+            // Calculate logo size maintaining aspect ratio - SMART RESIZING
+            // Desktop: Max 200px width, 150px height
+            // Mobile preview: Hidden (only show after download)
+            const isMobile = window.innerWidth < 768
+            const MAX_WIDTH = 200  // Maximum width in pixels
+            const MAX_HEIGHT = 150  // Maximum height in pixels
+            const padding = 20  // Fixed padding from edges
             
             const originalW = logoImg.width
             const originalH = logoImg.height
-            const originalAspectRatio = originalW / originalH
 
-            // Calculate dimensions while maintaining aspect ratio
-            let logoW = originalW
-            let logoH = originalH
+            // Calculate scale factor to fit BOTH max constraints while maintaining aspect ratio
+            // Never upscale, only downscale if needed
+            const scaleToFitWidth = MAX_WIDTH / originalW
+            const scaleToFitHeight = MAX_HEIGHT / originalH
+            const scale = Math.min(scaleToFitWidth, scaleToFitHeight, 1)
 
-            // Apply max-size constraints while maintaining aspect ratio
-            if (logoW > MAX_WIDTH) {
-              logoW = MAX_WIDTH
-              logoH = logoW / originalAspectRatio
-            }
-            if (logoH > MAX_HEIGHT) {
-              logoH = MAX_HEIGHT
-              logoW = logoH * originalAspectRatio
-            }
-
-            // Round to whole pixels
-            logoW = Math.round(logoW)
-            logoH = Math.round(logoH)
+            const logoW = Math.round(originalW * scale)
+            const logoH = Math.round(originalH * scale)
             
-            console.log(`📐 Logo resized (aspect ratio ${originalAspectRatio.toFixed(2)}): ${originalW}x${originalH} → ${logoW}x${logoH}`)
+            console.log(`📐 Logo resized (ASPECT PRESERVED): ${originalW}x${originalH} → ${logoW}x${logoH} (scale: ${scale.toFixed(2)})`)
 
             // Position logo in bottom-right corner with padding
             let logoX: number
@@ -359,9 +352,9 @@ export default function ResultPage() {
 
             console.log(`📍 Position: (${logoX.toFixed(0)}, ${logoY.toFixed(0)}), Size: ${logoW.toFixed(0)}x${logoH.toFixed(0)} - 100% VISIBLE`)
 
-            // Draw logo directly on canvas
+            // Always draw logo on canvas (visible on all devices - desktop AND mobile)
             ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
-            console.log(`✅ Logo drawn on canvas (size: ${logoW}x${logoH}) - 100% VISIBLE`)
+            console.log(`✅ Logo drawn on canvas (size: ${logoW}x${logoH}) at (${logoX}, ${logoY}) - VISIBLE ON ALL DEVICES`)
           } catch (err) {
             console.warn(`⚠️ Logo load failed, showing image without logo: ${err}`)
           }
@@ -741,8 +734,8 @@ export default function ResultPage() {
                 {/* Card Container - Image + Caption + Buttons */}
                 <div className="bg-slate-800/30 backdrop-blur border border-purple-500/20 rounded-xl overflow-hidden flex flex-col h-full">
                   
-                  {/* Image Container */}
-                  <div className="aspect-square relative group w-full overflow-hidden" style={{border: 'none', outline: 'none', boxShadow: 'none'}}>
+                  {/* Image Container - INCREASED HEIGHT FOR LOGO VISIBILITY */}
+                  <div className="w-full overflow-hidden relative group pb-4" style={{aspectRatio: '1/1.45', border: 'none', outline: 'none', boxShadow: 'none'}}>
                     {/* Show overlaid image if available, otherwise show original */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -753,7 +746,8 @@ export default function ResultPage() {
                       crossOrigin="anonymous"
                       loading="lazy"
                     />
-
+                    {/* Logo status indicator - REMOVED */}
+                    {/* User request: remove text badge */}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-end justify-center opacity-0 group-hover:opacity-100 p-4 gap-2 flex-col">
                       <Button
                         onClick={() => handleSaveImage(image.url, image.id, index + 1)}

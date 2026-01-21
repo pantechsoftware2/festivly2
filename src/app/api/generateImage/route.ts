@@ -20,7 +20,7 @@ const requestIdTimestamps = new Map<string, number>() // Track when each request
 // Clean up old requestIds every 5 minutes (to prevent memory leak)
 setInterval(() => {
   const now = Date.now()
-  const CLEANUP_AGE = 5 * 60 * 1000 // 5 minutes
+  const CLEANUP_AGE = 3 * 60 * 1000 // 3 minutes
   
   for (const [requestId, timestamp] of requestIdTimestamps.entries()) {
     if (now - timestamp > CLEANUP_AGE) {
@@ -426,8 +426,8 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
       }
 
       eventName = event.name
-      // Use Desi Prompt Engine
-      finalPrompt = await generateSmartPrompt(event.name, userIndustry, brandStyleContext)
+      // Use Desi Prompt Engine - generate CLEAN version (no text) for part of the hybrid batch
+      finalPrompt = await generateSmartPrompt(event.name, userIndustry, brandStyleContext, false)
       
       // WARN if using default industry (Google signup without selection)
       if (!userHasIndustry) {
@@ -472,17 +472,74 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
     console.log(finalPrompt)
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
 
-    // Generate 4 images (or call multiple times)
+    // Generate 4 images using HYBRID BATCH (2 clean + 2 text)
     let base64Images: string[] = []
 
     try {
-      // Request 4 images from API - all users free (no subscription limits)
-      // Note: Google Cloud may return fewer than 4 if quota exceeded
-      base64Images = await generateImages({
-        prompt: finalPrompt,
-        numberOfImages: 4,
-        sampleCount: 4,
+      console.log(`\n🎬 HYBRID BATCH GENERATION: 2 Clean Images + 2 Text Images`)
+      
+      // Step 1: Get the two prompts (one clean, one with text)
+      // For clean: use the finalPrompt we already generated (which has NO text if eventId provided)
+      // For text: regenerate with includeText=true flag
+      const cleanPrompt = finalPrompt
+      let textPrompt = await generateSmartPrompt(eventName, userIndustry, brandStyleContext, true)
+      
+      // Also enhance text prompt for premium users
+      if (userSubscription === 'pro' || userSubscription === 'pro plus') {
+        textPrompt = enhancePromptForPremium(textPrompt, userSubscription)
+      }
+      
+      console.log(`\n📄 CLEAN PROMPT (for 2 images, no text):`)
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+      console.log(cleanPrompt)
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+      
+      console.log(`\n✍️  TEXT PROMPT (for 2 images, with text):`)
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+      console.log(textPrompt)
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+      
+      // Step 2: Launch 2 PARALLEL requests to Imagen API
+      console.log(`\n⚡ Launching 2 PARALLEL requests to Imagen API...`)
+      console.log(`   Request A: Clean images (sampleCount: 2)`)
+      console.log(`   Request B: Text images (sampleCount: 2)`)
+      console.log(`   Expected total: 4 images (2 + 2)`)
+      
+      const cleanImagesPromise = generateImages({
+        prompt: cleanPrompt,
+        sampleCount: 2,  // CRITICAL: Only 2 images, NOT more
       })
+      
+      const textImagesPromise = generateImages({
+        prompt: textPrompt,
+        sampleCount: 2,  // CRITICAL: Only 2 images, NOT more
+      })
+      
+      // Step 3: Wait for both to complete
+      const [cleanImages, textImages] = await Promise.all([cleanImagesPromise, textImagesPromise])
+      
+      console.log(`✅ Batch complete: ${cleanImages.length} clean + ${textImages.length} text images`)
+      
+      // CRITICAL: Ensure exactly 2 images from each request
+      console.log(`\n🔍 Validating image counts:`)
+      console.log(`   Clean images received: ${cleanImages.length} (expected: 2)`)
+      console.log(`   Text images received: ${textImages.length} (expected: 2)`)
+      
+      // If we got more than 2 from either, truncate to exactly 2
+      const cleanTrimmed = cleanImages.slice(0, 2)
+      const textTrimmed = textImages.slice(0, 2)
+      
+      if (cleanTrimmed.length !== cleanImages.length) {
+        console.warn(`⚠️  TRIM: Clean images truncated from ${cleanImages.length} to ${cleanTrimmed.length}`)
+      }
+      if (textTrimmed.length !== textImages.length) {
+        console.warn(`⚠️  TRIM: Text images truncated from ${textImages.length} to ${textTrimmed.length}`)
+      }
+      
+      // Step 4: Combine into one array of 4 images (GUARANTEED 4)
+      base64Images = [...cleanTrimmed, ...textTrimmed]
+      
+      console.log(`\n✅ FINAL IMAGE COUNT: ${base64Images.length} images (2 clean + 2 text)`)
 
       console.log(`🎨 API returned ${base64Images.length} base64 images`)
       
@@ -765,4 +822,4 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
       { status: 200 } // Return 200 OK to avoid HTML error responses
     )
   }
-}
+} 

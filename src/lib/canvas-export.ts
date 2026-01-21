@@ -72,10 +72,19 @@ export async function addLogoToImage(
     // Draw main image
     ctx.drawImage(mainImg, 0, 0)
 
-    // Calculate logo position and dimensions
+    // Calculate logo position and dimensions with smart resizing
+    // Maintain aspect ratio and respect max constraints: 200px width, 150px height
     const padding = 20
-    const logoWidth = logoSize
-    const logoHeight = (logoImg.height / logoImg.width) * logoSize
+    const MAX_LOGO_WIDTH = 200
+    const MAX_LOGO_HEIGHT = 150
+    
+    // Calculate scale to fit both constraints while maintaining aspect ratio
+    const scaleToFitWidth = MAX_LOGO_WIDTH / logoImg.width
+    const scaleToFitHeight = MAX_LOGO_HEIGHT / logoImg.height
+    const scale = Math.min(scaleToFitWidth, scaleToFitHeight, 1) // never upscale
+    
+    const logoWidth = Math.round(logoImg.width * scale)
+    const logoHeight = Math.round(logoImg.height * scale)
     
     let x = padding
     let y = padding

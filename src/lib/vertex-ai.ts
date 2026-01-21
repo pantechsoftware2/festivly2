@@ -333,14 +333,14 @@ export async function generateImages(options: ImageGenerationOptions): Promise<s
         console.error('🔴 API Failed:', response.status, errorText.substring(0, 200))
         
         if (response.status === 429) {
-          // Quota exceeded - return placeholder images (4 instead of 1)
-          console.warn('⚠️ Quota exceeded - returning placeholders')
-          return [
-            createPlaceholderImage(options.prompt),
-            createPlaceholderImage(options.prompt),
-            createPlaceholderImage(options.prompt),
-            createPlaceholderImage(options.prompt),
-          ]
+          // Quota exceeded - return placeholder images matching requested count
+          const count = options.sampleCount || options.numberOfImages || 4
+          console.warn(`⚠️ Quota exceeded - returning ${count} placeholders (matching sampleCount: ${count})`)
+          const placeholders = []
+          for (let i = 0; i < count; i++) {
+            placeholders.push(createPlaceholderImage(options.prompt))
+          }
+          return placeholders
         }
         
         throw new Error(`Vertex AI API error (${response.status}): ${errorText}`)
