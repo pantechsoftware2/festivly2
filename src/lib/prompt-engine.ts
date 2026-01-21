@@ -48,7 +48,8 @@ Generate the JSON output below.
 export async function generateSmartPrompt(
   event: string, 
   industry: string, 
-  brandStyleContext: string | null = null
+  brandStyleContext: string | null = null,
+  includeText: boolean = false
 ): Promise<string> {
   try {
     console.log(`🧠 Creative Director: Analyzing strategy for ${event} in ${industry}...`);
@@ -80,19 +81,40 @@ export async function generateSmartPrompt(
     const data = JSON.parse(response);
     console.log(`✨ Strategy: ${data.reasoning}`);
     
-    // We append specific technical constraints to ensure Imagen behaves
-    return `${data.image_prompt} 
+    // Build base prompt
+    let finalPrompt = `${data.image_prompt}
     
     TECHNICAL SPECS:
     - High quality, 8k, photorealistic, professional photography
-    - NO text, NO watermarks, NO borders, NO frames
     - Seamless, cinematic lighting, wide angle
     - Style: ${brandStyleContext ? brandStyleContext : 'Modern, clean, corporate'}`;
+
+    // --- THE TEXT INJECTION (HYBRID BATCH) ---
+    if (includeText && data.headline_suggestion) {
+      // Imagen 4 Specific Text Trigger - Poster Style
+      console.log(`📝 Adding text overlay: "${data.headline_suggestion}"`);
+      finalPrompt += `
+    
+    TEXT RENDER INSTRUCTIONS:
+    - The text "${data.headline_suggestion.toUpperCase()}" must be clearly visible in the center or strategic location.
+    - Typography style: Elegant, Bold, 3D Gold or Metallic finish with subtle drop shadow.
+    - The text should be integrated into the scene naturally (e.g., neon sign, gold embossed letters, elegant overlay on negative space).
+    - Spelling must be exact: "${data.headline_suggestion.toUpperCase()}".
+    - Ensure text doesn't overlap with important image details, place in negative space.
+    - NO watermarks, NO logos besides the text itself.`;
+    } else {
+      // Explicitly forbid text for the clean version
+      finalPrompt += `
+    - NO text, NO writing, NO watermarks, NO borders, NO frames
+    - Clean background perfect for adding copy/captions later`;
+    }
+
+    return finalPrompt;
 
   } catch (error) {
     console.error("⚠️ Creative Director unavailable, falling back to keywords:", error);
     // Fallback to the old method if AI fails
-    return generateStaticPrompt(event, industry, brandStyleContext);
+    return generateStaticPrompt(event, industry, brandStyleContext, includeText);
   }
 }
 
@@ -107,13 +129,22 @@ function getEventContext(event: string): string {
   return map[event] || "Celebration";
 }
 
-export function generateStaticPrompt(event: string, industry: string, brandStyleContext?: string | null): string {
+export function generateStaticPrompt(event: string, industry: string, brandStyleContext?: string | null, includeText: boolean = false): string {
   const indKeywords = industryKeywords[industry as keyof typeof industryKeywords] || industryKeywords["Education"];
   const evtKeywords = eventKeywords[event as keyof typeof eventKeywords] || eventKeywords["Republic Day"];
 
   let prompt = `${event} social media background, ${industry} style. 
   Visuals: ${indKeywords}, ${evtKeywords}. 
-  High quality, photorealistic, 8k. NO TEXT.`;
+  High quality, photorealistic, 8k.`;
+
+  if (includeText) {
+    // Poster style with text
+    const eventName = event.toUpperCase();
+    prompt += ` WITH BOLD TEXT: "${eventName}" in elegant, 3D gold or metallic finish centered in the image.`;
+  } else {
+    // Clean style without text
+    prompt += ` NO TEXT, clean background for copy.`;
+  }
 
   if (brandStyleContext) prompt += ` Style: ${brandStyleContext}`;
   

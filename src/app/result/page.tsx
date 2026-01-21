@@ -309,27 +309,34 @@ export default function ResultPage() {
 
             console.log(`✅ Logo loaded: ${logoImg.width}x${logoImg.height}`)
 
-            // Calculate logo size maintaining aspect ratio - MOBILE OPTIMIZED
-            // On mobile, reduce size to prevent memory issues
-            const isMobile = window.innerWidth < 768
-            const MAX_WIDTH = isMobile ? 120 : 200
-            const MAX_HEIGHT = isMobile ? 90 : 150
-            const padding = isMobile ? 10 : 20  // Smaller padding on mobile
+            // SMART LOGO RESIZING - Maintain aspect ratio with max-size constraints
+            const MAX_WIDTH = 200   // Maximum width: 200px
+            const MAX_HEIGHT = 150  // Maximum height: 150px
+            const padding = 20      // 20px padding from edges
             
             const originalW = logoImg.width
             const originalH = logoImg.height
+            const originalAspectRatio = originalW / originalH
 
-            // Scale factor that fits BOTH constraints
-            const scale = Math.min(
-              MAX_WIDTH / originalW,
-              MAX_HEIGHT / originalH,
-              1 // never upscale small logos
-            )
+            // Calculate dimensions while maintaining aspect ratio
+            let logoW = originalW
+            let logoH = originalH
 
-            const logoW = Math.round(originalW * scale)
-            const logoH = Math.round(originalH * scale)
+            // Apply max-size constraints while maintaining aspect ratio
+            if (logoW > MAX_WIDTH) {
+              logoW = MAX_WIDTH
+              logoH = logoW / originalAspectRatio
+            }
+            if (logoH > MAX_HEIGHT) {
+              logoH = MAX_HEIGHT
+              logoW = logoH * originalAspectRatio
+            }
+
+            // Round to whole pixels
+            logoW = Math.round(logoW)
+            logoH = Math.round(logoH)
             
-            console.log(`📐 Logo resized for ${isMobile ? 'MOBILE' : 'DESKTOP'}: ${originalW}x${originalH} → ${logoW}x${logoH}`)
+            console.log(`📐 Logo resized (aspect ratio ${originalAspectRatio.toFixed(2)}): ${originalW}x${originalH} → ${logoW}x${logoH}`)
 
             // Position logo in bottom-right corner with padding
             let logoX: number
@@ -746,12 +753,7 @@ export default function ResultPage() {
                       crossOrigin="anonymous"
                       loading="lazy"
                     />
-                    {/* Overlay status badge for mobile */}
-                    {imagesWithLogo[image.id] && window.innerWidth < 768 && (
-                      <div className="absolute top-2 right-2 bg-green-500/80 text-white text-xs px-2 py-1 rounded">
-                        ✅ Logo Added
-                      </div>
-                    )}
+
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-end justify-center opacity-0 group-hover:opacity-100 p-4 gap-2 flex-col">
                       <Button
                         onClick={() => handleSaveImage(image.url, image.id, index + 1)}
