@@ -18,10 +18,11 @@ You are the Lead Creative Director at a high-end ad agency. Your goal is to tran
 
 ### PHASE 1: STRATEGIC REASONING
 Analyze the Input:
-1. **Commercial Intent:** Is this B2B (trust) or B2C (emotion)?
-2. **Visual Hierarchy:** Where must text sit? (Dark images→white text)
-3. **The 'Click' Factor:** What visual element stops the scroll?
-4. **Brand Fit:** How does this align with the brand style?
+1. **Industry Context (CRITICAL):** Design SPECIFICALLY for the given industry - use industry-specific visual language, aesthetics, and target audience expectations
+2. **Commercial Intent:** Is this B2B (trust) or B2C (emotion)?
+3. **Visual Hierarchy:** Where must text sit? (Dark images→white text)
+4. **The 'Click' Factor:** What visual element stops the scroll?
+5. **Brand Fit:** How does this align with the brand style?
 
 ### PHASE 2: ASSET GENERATION
 Generate the JSON output below.
@@ -35,7 +36,7 @@ Generate the JSON output below.
 
 ### REQUIRED JSON OUTPUT:
 {
-  "reasoning": "Brief strategy explanation",
+  "reasoning": "Brief strategy explanation including industry fit",
   "image_prompt": "Detailed Imagen-4 prompt with lighting, camera, composition. Max 80 words. MUST NOT include any brief text, event descriptions, or metadata that should appear in image.",
   "headline_suggestion": "Max 3 words - something creative and brandable, NOT the event name",
   "color_palette_hex": ["#hex1", "#hex2"]
@@ -55,13 +56,23 @@ export async function generateSmartPrompt(
   try {
     console.log(`🧠 Creative Director: Analyzing strategy for ${event} in ${industry}...`);
 
-    // 1. Construct the Brief for the Creative Director (SIMPLIFIED TO AVOID TEXT BLEED)
-    const brief = `
+    // For text images (3-4), add explicit instructions BEFORE calling Gemini
+    let textPrefix = '';
+    if (includeText) {
+      textPrefix = `POSTER STYLE - EVENT TEXT REQUIRED:
+This is a POSTER for ${event}. Include space and design for: "${event.toUpperCase()}" as large gold text.
+`;
+    }
+
+    // 1. Construct the Brief for the Creative Director
+    const brief = `${textPrefix}
 EVENT: ${event}
-INDUSTRY: ${industry}
+INDUSTRY: ${industry} (CRITICAL - design for this industry specifically)
 STYLE: ${brandStyleContext || "professional"}
 
-TASK: Generate a visual prompt for a ${event} social media background in the ${industry} industry.
+TASK: Generate a visual prompt for a ${event} social media background for the ${industry} industry.
+The image MUST reflect the industry's visual language and target audience.
+${includeText ? `This MUST be a POSTER-STYLE image with space for event text "${event.toUpperCase()}" at top center.` : 'Clean visual, no text.'}
 Return ONLY the JSON with image_prompt, headline_suggestion, reasoning, and color_palette_hex.
 `;
 
@@ -80,6 +91,10 @@ Return ONLY the JSON with image_prompt, headline_suggestion, reasoning, and colo
     let data;
     try {
       data = JSON.parse(response);
+      // Handle array response from Gemini
+      if (Array.isArray(data)) {
+        data = data[0];
+      }
     } catch (parseError) {
       console.error("❌ Failed to parse Gemini JSON response:", parseError);
       console.error("   Raw response:", response.substring(0, 200));
@@ -107,46 +122,46 @@ Return ONLY the JSON with image_prompt, headline_suggestion, reasoning, and colo
       }
     }
     
-    // Build base prompt
-    let finalPrompt = `${data.image_prompt}
+    // Build base prompt - ENSURE EVENT IS PROMINENT IN ALL IMAGES
+    let finalPrompt = `CRITICAL - EVENT TYPE: ${event}
+${data.image_prompt}
     
-    TECHNICAL SPECS:
-    - High quality, 8k, photorealistic, professional photography
-    - Seamless, cinematic lighting, wide angle
+    MUST SHOW: Visual elements clearly representing ${event}
+    QUALITY (CRITICAL):
+    - 8K Ultra HD, photorealistic, professional photography
+    - Professional lighting, Sony A7R IV quality
+    - Studio-grade output, color graded
     - Style: ${brandStyleContext ? brandStyleContext : 'Modern, clean, corporate'}`;
 
     // --- THE TEXT INJECTION (HYBRID BATCH) ---
-    if (includeText && data.headline_suggestion) {
-      // Imagen 4 Specific Text Trigger - Poster Style
-      // ENFORCE: Max 3 words
-      const words = data.headline_suggestion.trim().split(/\s+/);
-      const textToRender = words.slice(0, 3).join(' ').toUpperCase();
-      
-      console.log(`📝 Adding text overlay: "${textToRender}"`);
+    if (includeText) {
+      // Images 3-4: TEXT VISIBLE - Event name as MANDATORY headline
+      console.log(`📝 BATCH 2 (Images 3-4) MANDATORY EVENT HEADLINE: "${event.toUpperCase()}"`);
       finalPrompt += `
     
-    TEXT RENDER INSTRUCTIONS (CRITICAL - POSTER STYLE):
-    - ONLY render this headline text: "${textToRender}"
-    - Typography ONLY: Bold, elegant, 3D Gold/Metallic/Neon/Stone with drop shadow
-    - Placement: TOP CENTER of image (above the main subject), integrated naturally into scene
-    - Vertical position: Upper third of image, prominent and readable
-    - NO other text, NO captions, NO labels, NO metadata, NO descriptions
-    - Spelling must be exact: "${textToRender}"
-    - Do NOT add event name, industry keywords, or any other text
-    - Text appearance: gold foil effect OR neon glow OR engraved stone (pick one naturally)
-    - Ensure text has realistic depth and shadow (NOT flat or pasted)
-    - NO collage, NO overlays, NO watermarks, NO frames
-    - Single cohesive composition with text integrated in upper area${brandStyleContext ? `\n    - Brand style guide: ${brandStyleContext}` : ''}`;
+    *** MANDATORY TEXT RENDERING ***
+    TEXT TO RENDER: "${event.toUpperCase()}"
+    Position: TOP CENTER of image, prominent
+    Font: Bold, Large, Sans-serif
+    Color: Bright Gold #FFD700 or Metallic Gold
+    Style: 3D embossed with shadow
+    MUST BE CLEARLY VISIBLE AND READABLE
+    ONLY render this text: "${event.toUpperCase()}"
+    NO other text, NO watermarks
+    Professional poster appearance
+    Festive, celebratory tone
+    *** THIS TEXT MUST APPEAR IN THE IMAGE ***`;
     } else {
-      // Explicitly forbid text for the clean version
+      // Images 1-2: Clean visual only, but event must be visually apparent
+      console.log(`📝 BATCH 1 (Images 1-2) EVENT VISUAL (NO TEXT): ${event}`);
       finalPrompt += `
     
-    CLEAN COMPOSITION (NO TEXT):
-    - ABSOLUTELY NO text, NO writing, NO typography, NO letters, NO numbers
-    - NO watermarks, NO borders, NO frames, NO annotations, NO labels
-    - NO collage elements, NO overlays, NO stickers, NO graphics
-    - Pure visual storytelling - clean background perfect for copy placement
-    - Single focused subject with professional composition${brandStyleContext ? `\n    - Brand style guide: ${brandStyleContext}` : ''}`;
+    CLEAN VISUAL (NO TEXT ALLOWED):
+    - NO text, NO writing, NO typography, NO letters, NO numbers
+    - NO watermarks, NO borders, NO frames
+    - NO collage elements, NO overlays, NO stickers
+    - Single focused subject with professional composition
+    - VISUAL MUST CLEARLY SHOW: ${event} event characteristics and atmosphere`;
     }
 
     return finalPrompt;

@@ -72,6 +72,8 @@ async function addLogoToBase64Image(
   }
 }
 
+
+
 function getCacheKey(userId: string, prompt: string): string {
   return `${userId}:${prompt.substring(0, 50)}`
 }
@@ -414,176 +416,150 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
       }
 
       eventName = event.name
-      // Use Desi Prompt Engine - generate CLEAN version (no text) for part of the hybrid batch
-      finalPrompt = await generateSmartPrompt(event.name, userIndustry, brandStyleContext, false)
       
       // WARN if using default industry (Google signup without selection)
       if (!userHasIndustry) {
         console.warn(`⚠️ PRODUCTION QUALITY: Generating with DEFAULT industry "${userIndustry}" - User may need to set industry_type in profile`)
       }
       
-      // Enhance prompt for Pro and Pro Plus users
-      if (userSubscription === 'pro' || userSubscription === 'pro plus') {
-        finalPrompt = enhancePromptForPremium(finalPrompt, userSubscription)
-      }
-      
+      // Note: Sequential batch generation will happen below
+      // 1. Generate clean prompt (generateSmartPrompt with false)
+      // 2. Generate text prompt (generateSmartPrompt with true)
+      // 3. Request 2 clean images first (BATCH 1)
+      // 4. Request 2 text images second (BATCH 2) with fallback to clean if text fails
       console.log(`\n🎉 EVENT-BASED GENERATION:`)
       console.log(`  Event: ${eventName}`)
       console.log(`  Industry: ${userIndustry}${!userHasIndustry ? ' (DEFAULT - user should set)' : ' (explicit)'}`)
       console.log(`  Subscription: ${userSubscription}`)
-      console.log(`  Generated Prompt: ${finalPrompt.substring(0, 100)}...`)
     }
 
-    if (!finalPrompt || !finalPrompt.trim()) {
+    if (!eventId && !userPrompt) {
       return NextResponse.json(
         {
           success: false,
           images: [],
           prompt: '',
-          error: 'Could not generate prompt',
+          error: 'Either eventId or prompt is required',
         },
         { status: 400 }
       )
     }
 
-    console.log(`\n🚀 REQUEST #${Math.random().toString(36).substring(7).toUpperCase()} - Generating 4 images`)
-    console.log(`   userId: ${userId || 'UNDEFINED'}, subscription: ${userSubscription}, industry: ${userIndustry}${!userHasIndustry ? ' (DEFAULT)' : ''}`)
-    console.log(`   NOTE: All users get unlimited free generations with all 4 images`)
-    console.log(`\n🔐 ABOUT TO CALL IMAGEN API:`)
-    console.log(`   Environment confirmed - Project: ${process.env.GOOGLE_CLOUD_PROJECT_ID}`)
-    console.log(`   Service key ready: ${!!process.env.GOOGLE_SERVICE_ACCOUNT_KEY}`)
-    console.log(`   Region: ${process.env.GOOGLE_CLOUD_REGION || 'us-central1'}`)
-    
-    // LOG FULL PROMPT TEXT FOR DEBUGGING
-    console.log(`\n📝 FULL PROMPT TEXT (${finalPrompt.length} chars):`)
-    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-    console.log(finalPrompt)
-    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+    console.log(`\n🚀 REQUEST #${Math.random().toString(36).substring(7).toUpperCase()} - Generating 4 images (2 clean + 2 text)`)
+    console.log(`   userId: ${userId || 'UNDEFINED'}, subscription: ${userSubscription}`)
 
-    // Generate 4 images using HYBRID BATCH (2 clean + 2 text)
     let base64Images: string[] = []
 
     try {
-      console.log(`\n🎬 HYBRID BATCH GENERATION: 2 Clean Images + 2 Text Images (SEQUENTIAL)`)
-      
-      // Step 1: Generate the two separate prompts (each with clear instructions)
-      console.log(`\n⚡ Generating prompts...`)
+      // BATCH 1: Generate 2 CLEAN images (no text) - with retry on quota errors
+      console.log(`\n🚀 BATCH 1: Requesting 2 CLEAN images (no text)...`)
       const cleanPrompt = await generateSmartPrompt(eventName, userIndustry, brandStyleContext, false)
-      const textPrompt = await generateSmartPrompt(eventName, userIndustry, brandStyleContext, true)
-      
-      // Enhance for premium users
-      let finalCleanPrompt = cleanPrompt
-      let finalTextPrompt = textPrompt
+      let enhancedCleanPrompt = cleanPrompt
       if (userSubscription === 'pro' || userSubscription === 'pro plus') {
-        finalCleanPrompt = enhancePromptForPremium(cleanPrompt, userSubscription)
-        finalTextPrompt = enhancePromptForPremium(textPrompt, userSubscription)
+        enhancedCleanPrompt = enhancePromptForPremium(cleanPrompt, userSubscription)
       }
       
-      console.log(`\n📄 CLEAN PROMPT (2 images, NO text):`)
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-      console.log(finalCleanPrompt.substring(0, 300))
-      console.log(`...`)
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-      
-      console.log(`\n✍️  TEXT PROMPT (2 images, WITH headline):`)
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-      console.log(finalTextPrompt.substring(0, 300))
-      console.log(`...`)
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-      
-      // Step 2: Request A - Generate 2 CLEAN images (SEQUENTIAL, not parallel)
-      console.log(`\n⚡ REQUEST A: Generating 2 CLEAN images (NO text, pure visual)...`)
-      const cleanImages = await generateImages({
-        prompt: finalCleanPrompt,
-        sampleCount: 2,
-      })
-      console.log(`✅ Got ${cleanImages.length} clean images`)
-      
-      // Wait 8 seconds before next request to avoid quota contention
-      console.log(`⏳ Waiting 8 seconds before text images (quota management)...`)
-      await new Promise(resolve => setTimeout(resolve, 8000))
-      
-      // Step 3: Request B - Generate 2 TEXT images (SEQUENTIAL, after clean images done)
-      console.log(`\n⚡ REQUEST B: Generating 2 TEXT images (WITH headline poster style)...`)
-      const textImages = await generateImages({
-        prompt: finalTextPrompt,
-        sampleCount: 2,
-      })
-      console.log(`✅ Got ${textImages.length} text images`)
-      
-      // Step 4: Combine into 4 images
-      console.log(`\n🔍 Validating batch:`)
-      console.log(`   Clean images: ${cleanImages.length} (expected: 2)`)
-      console.log(`   Text images: ${textImages.length} (expected: 2)`)
-      
-      // Trim to exactly 2 each
-      const cleanTrimmed = cleanImages.slice(0, 2)
-      const textTrimmed = textImages.slice(0, 2)
-      
-      if (cleanTrimmed.length < 2 || textTrimmed.length < 2) {
-        console.warn(`⚠️  WARNING: Expected 2+2 images, got ${cleanTrimmed.length}+${textTrimmed.length}`)
-      }
-      
-      base64Images = [...cleanTrimmed, ...textTrimmed]
-      
-      console.log(`\n✅ FINAL IMAGE COUNT: ${base64Images.length} images (${cleanTrimmed.length} clean + ${textTrimmed.length} text)`)
-
-      console.log(`🎨 API returned ${base64Images.length} base64 images`)
-      
-      // CHECK IF THESE ARE PLACEHOLDER IMAGES
-      const realImageCount = base64Images.filter(img => !img.startsWith('data:image/svg+xml')).length
-      const placeholderCount = base64Images.filter(img => img.startsWith('data:image/svg+xml')).length
-      
-      console.log(`   Real images: ${realImageCount}`)
-      console.log(`   Placeholder SVG images: ${placeholderCount}`)
-      
-      if (placeholderCount > 0 && realImageCount === 0) {
-        // ALL images are placeholders - API failed silently
-        // Return empty images gracefully - no error shown to user
-        return NextResponse.json(
-          {
-            success: false,
-            images: [],
-            prompt: finalPrompt,
-          },
-          { status: 200 } // Return 200 OK even on failure - graceful
-        )
-      }
-      
-      if (placeholderCount > 0) {
-        console.warn(`⚠️ PARTIAL FAILURE: ${realImageCount} real + ${placeholderCount} placeholder images`)
-        console.warn(`   This indicates the Vertex AI API partially failed`)
-        console.warn(`   Returning what we have (${realImageCount} real images)`)
-      }
-      
-      // CRITICAL CHECK: Detect if only 1 image returned (may be placeholder/fallback)
-      if (base64Images.length === 1) {
-        console.warn(`⚠️ WARNING: Only 1 image returned instead of 4`)
-        console.warn(`   This could indicate: Vertex AI API failed, quota exceeded, or network error`)
-      }
-
-      if (base64Images.length === 0) {
-        throw new Error('No images generated - API returned empty array')
-      }
-
-      // Verify each image is valid base64
-      base64Images.forEach((img, idx) => {
-        if (!img || img.length === 0) {
-          throw new Error(`Image ${idx} is empty or invalid`)
+      let cleanImages: string[] = []
+      let batchRetries = 0
+      while (cleanImages.length === 0 && batchRetries < 2) {
+        try {
+          let rawImages = await generateImages({
+            prompt: enhancedCleanPrompt,
+            sampleCount: 2,
+          })
+          cleanImages = rawImages.filter(img => !img.startsWith('data:image/svg+xml'))
+          if (cleanImages.length === 0 && batchRetries < 1) {
+            console.warn(`⚠️ BATCH 1 attempt ${batchRetries + 1}: Got placeholders, waiting 3s before retry...`)
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            batchRetries++
+          }
+        } catch (err: any) {
+          if (err?.message?.includes('429') && batchRetries < 1) {
+            console.warn(`⚠️ BATCH 1 quota hit, waiting 5s before retry...`)
+            await new Promise(resolve => setTimeout(resolve, 5000))
+            batchRetries++
+          } else {
+            throw err
+          }
         }
-        const sizeKB = (img.length / 1024).toFixed(2)
-        console.log(`   Image ${idx + 1}: ${sizeKB} KB`)
-      })
+      }
+      
+      if (cleanImages.length === 0) {
+        throw new Error('BATCH 1: No real images generated after retries')
+      }
+      
+      console.log(`✅ BATCH 1 SUCCESS: Got ${cleanImages.length} real clean images`)
+      base64Images.push(...cleanImages)
+
+      // WAIT 2 seconds before next request (prevent concurrent API calls)
+      console.log(`⏱️  Waiting 2 seconds before BATCH 2 (preventing concurrent API calls)...`)
+      await new Promise(resolve => setTimeout(resolve, 2000))
+
+      // BATCH 2: Generate 2 TEXT images (sequential, after Batch 1 + wait)
+      console.log(`\n🚀 BATCH 2: Requesting 2 TEXT images (with text/headlines)...`)
+      const textPrompt = await generateSmartPrompt(eventName, userIndustry, brandStyleContext, true)
+      console.log(`📋 BATCH 2 Prompt (first 150 chars): ${textPrompt.substring(0, 150)}...`)
+      let enhancedTextPrompt = textPrompt
+      if (userSubscription === 'pro' || userSubscription === 'pro plus') {
+        enhancedTextPrompt = enhancePromptForPremium(textPrompt, userSubscription)
+      }
+      console.log(`✍️  Enhanced BATCH 2 Prompt contains TEXT instructions: ${enhancedTextPrompt.includes('TEXT RENDERING') ? '✅ YES' : '❌ NO'}`)
+      
+      let textImages: string[] = []
+      let textRetries = 0
+      while (textImages.length === 0 && textRetries < 2) {
+        try {
+          let rawImages = await generateImages({
+            prompt: enhancedTextPrompt,
+            sampleCount: 2,
+          })
+          textImages = rawImages.filter(img => !img.startsWith('data:image/svg+xml'))
+          if (textImages.length === 0 && textRetries < 1) {
+            console.warn(`⚠️ BATCH 2 attempt ${textRetries + 1}: Got placeholders, waiting 3s before retry...`)
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            textRetries++
+          }
+        } catch (err: any) {
+          if (err?.message?.includes('429') && textRetries < 1) {
+            console.warn(`⚠️ BATCH 2 quota hit, waiting 5s before retry...`)
+            await new Promise(resolve => setTimeout(resolve, 5000))
+            textRetries++
+          } else {
+            throw err
+          }
+        }
+      }
+      
+      if (textImages.length === 0) {
+        console.warn(`⚠️ BATCH 2: No text images, using fallback clean images...`)
+        textImages = cleanImages.slice(0, 2)
+      }
+      
+      console.log(`✅ BATCH 2 SUCCESS: Got ${textImages.length} images`)
+      base64Images.push(...textImages)
+
+      // Ensure exactly 4 images
+      base64Images = base64Images.slice(0, 4)
+      
+      const hasPlaceholders = base64Images.some(img => img.startsWith('data:image/svg+xml'))
+      if (hasPlaceholders) {
+        throw new Error('Generated images contain placeholders')
+      }
+      
+      console.log(`\n✅ FINAL: ${base64Images.length} REAL images generated`)
+
+      if (base64Images.length < 4) {
+        throw new Error(`Only got ${base64Images.length} images, expected 4`)
+      }
     } catch (genError: any) {
       console.error('❌ Image generation error:', genError?.message)
-      console.error('   Stack:', genError?.stack)
       
       // Return empty images gracefully - no 500 error
       return NextResponse.json(
         {
           success: false,
           images: [],
-          prompt: finalPrompt,
+          prompt: '',
         },
         { status: 200 } // Return 200 OK even on failure - graceful
       )
@@ -709,7 +685,7 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
         {
           success: false,
           images: [],
-          prompt: finalPrompt,
+          prompt: '',
           error: 'Failed to upload generated images',
         },
         { status: 500 }
@@ -779,7 +755,7 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
     const response: GenerateImageResponse = {
       success: true,
       images: generatedImages,
-      prompt: finalPrompt,
+      prompt: eventName, // Use event name as prompt display
       eventName: eventName,
       industry: userIndustry,
       // showPricingModal: showPricingModal,
