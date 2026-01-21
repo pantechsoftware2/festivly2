@@ -285,13 +285,6 @@ export default function ResultPage() {
         ctx.drawImage(mainImg, 0, 0)
         console.log(`✅ Canvas created and image drawn`)
 
-        // Draw test overlay if enabled (red square in corner for debugging)
-        if (testOverlay) {
-          console.log(`🧪 Test overlay enabled - drawing red square`)
-          ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'
-          ctx.fillRect(canvas.width - 60, canvas.height - 60, 50, 50)
-        }
-
         // Draw logo if available
         if (logoUrl && typeof logoUrl === 'string' && logoUrl.length > 10 && logoUrl.startsWith('http')) {
           try {
