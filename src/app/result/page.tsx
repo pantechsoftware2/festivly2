@@ -309,10 +309,12 @@ export default function ResultPage() {
 
             console.log(`✅ Logo loaded: ${logoImg.width}x${logoImg.height}`)
 
-            // Calculate logo size maintaining aspect ratio
-            const MAX_WIDTH = 200
-            const MAX_HEIGHT = 150
-            const padding = 20  // 20px padding from edges
+            // Calculate logo size maintaining aspect ratio - MOBILE OPTIMIZED
+            // On mobile, reduce size to prevent memory issues
+            const isMobile = window.innerWidth < 768
+            const MAX_WIDTH = isMobile ? 120 : 200
+            const MAX_HEIGHT = isMobile ? 90 : 150
+            const padding = isMobile ? 10 : 20  // Smaller padding on mobile
             
             const originalW = logoImg.width
             const originalH = logoImg.height
@@ -327,21 +329,21 @@ export default function ResultPage() {
             const logoW = Math.round(originalW * scale)
             const logoH = Math.round(originalH * scale)
             
-            console.log(`📐 Logo resized safely: ${originalW}x${originalH} → ${logoW}x${logoH}`)
+            console.log(`📐 Logo resized for ${isMobile ? 'MOBILE' : 'DESKTOP'}: ${originalW}x${originalH} → ${logoW}x${logoH}`)
 
-            // Position logo in bottom-right corner with 20px padding
+            // Position logo in bottom-right corner with padding
             let logoX: number
             let logoY: number
 
             if (logoPosition === 'left') {
-              // Left corner: 20px from left edge
+              // Left corner: padding from left edge
               logoX = padding
             } else {
-              // Right corner: 20px from right edge
+              // Right corner: padding from right edge
               logoX = canvas.width - logoW - padding
             }
 
-            // Bottom corner: 20px from bottom edge
+            // Bottom corner: padding from bottom edge
             logoY = canvas.height - logoH - padding
 
             // Ensure logo doesn't go off-screen (failsafe)
@@ -361,31 +363,45 @@ export default function ResultPage() {
         }
 
         // Convert canvas to blob (handles cross-origin images better than toDataURL)
+        // MOBILE FIX: Use dataURL directly on mobile to avoid blob URL garbage collection
+        const isMobile = window.innerWidth < 768
         const finalUrl = await new Promise<string>((resolve, reject) => {
           try {
-            canvas.toBlob(
-              (blob) => {
-                if (!blob) {
-                  console.warn(`⚠️ toBlob returned null, falling back to toDataURL`)
-                  // Fallback to toDataURL
-                  try {
-                    const dataUrl = canvas.toDataURL('image/png', 0.9)
-                    resolve(dataUrl)
-                  } catch (e) {
-                    console.warn(`⚠️ toDataURL also failed: ${e}`)
-                    resolve(imageUrl) // Use original image
+            if (isMobile) {
+              // On mobile, use toDataURL directly to avoid blob URL issues
+              try {
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+                console.log(`✅ Data URL created (mobile): ${dataUrl.substring(0, 50)}...`)
+                resolve(dataUrl)
+              } catch (e) {
+                console.warn(`⚠️ toDataURL failed on mobile: ${e}`)
+                resolve(imageUrl) // Use original image
+              }
+            } else {
+              // On desktop, use blob for better performance
+              canvas.toBlob(
+                (blob) => {
+                  if (!blob) {
+                    console.warn(`⚠️ toBlob returned null, falling back to toDataURL`)
+                    try {
+                      const dataUrl = canvas.toDataURL('image/png', 0.9)
+                      resolve(dataUrl)
+                    } catch (e) {
+                      console.warn(`⚠️ toDataURL also failed: ${e}`)
+                      resolve(imageUrl)
+                    }
+                    return
                   }
-                  return
-                }
-                const url = URL.createObjectURL(blob)
-                console.log(`✅ Blob created: ${(blob.size / 1024).toFixed(2)}KB`)
-                resolve(url)
-              },
-              'image/png',
-              0.9
-            )
+                  const url = URL.createObjectURL(blob)
+                  console.log(`✅ Blob created (desktop): ${(blob.size / 1024).toFixed(2)}KB`)
+                  resolve(url)
+                },
+                'image/png',
+                0.9
+              )
+            }
           } catch (e) {
-            console.warn(`⚠️ toBlob error: ${e}, using original image`)
+            console.warn(`⚠️ Canvas conversion error: ${e}, using original image`)
             resolve(imageUrl)
           }
         })
@@ -667,7 +683,7 @@ export default function ResultPage() {
             <h1 className="text-4xl font-bold text-white mb-2">
               ✨ Your {result.eventName} Images
             </h1>
-            <div className="flex items-center justify-center gap-4 text-purple-200/70 flex-col sm:flex-row">
+            <div className="flex items-center justify-center gap-4 text-purple-200/70 flex-col sm:flex-row flex-wrap">
               <div className="flex items-center gap-3">
                 {userLogo ? (
                   <span className="text-green-400">✅ Logo overlay applied</span>
@@ -677,8 +693,8 @@ export default function ResultPage() {
                 <span>Generated for your {result.industry} business</span>
               </div>
 
-              {/* Logo position controls */}
-              <div className="flex items-center gap-3">
+              {/* Logo position controls - MOBILE RESPONSIVE */}
+              <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-sm text-purple-300/80">Logo Position:</span>
                 <div className="flex gap-2 rounded-md overflow-hidden bg-white/5 p-0.5">
                   <button
@@ -703,6 +719,11 @@ export default function ResultPage() {
                   {testOverlay ? 'Test: ON' : 'Test: OFF'}
                 </button>
               </div>
+
+              {/* Mobile indicator */}
+              <div className="md:hidden text-xs text-purple-300/60">
+                📱 Mobile optimized logo overlay
+              </div>
             </div>
           </div>
 
@@ -714,16 +735,23 @@ export default function ResultPage() {
                 <div className="bg-slate-800/30 backdrop-blur border border-purple-500/20 rounded-xl overflow-hidden flex flex-col h-full">
                   
                   {/* Image Container */}
-                  <div className="aspect-square relative group w-full" style={{border: 'none', outline: 'none', boxShadow: 'none'}}>
+                  <div className="aspect-square relative group w-full overflow-hidden" style={{border: 'none', outline: 'none', boxShadow: 'none'}}>
                     {/* Show overlaid image if available, otherwise show original */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={imagesWithLogo[image.id] || image.url}
                       alt={`Generated image ${index + 1}`}
-                      className="w-full h-full object-cover"
-                      style={{border: 'none', outline: 'none', boxShadow: 'none', margin: '0', padding: '0'}}
+                      className="w-full h-full object-cover block"
+                      style={{border: 'none', outline: 'none', boxShadow: 'none', margin: '0', padding: '0', display: 'block'}}
                       crossOrigin="anonymous"
+                      loading="lazy"
                     />
+                    {/* Overlay status badge for mobile */}
+                    {imagesWithLogo[image.id] && window.innerWidth < 768 && (
+                      <div className="absolute top-2 right-2 bg-green-500/80 text-white text-xs px-2 py-1 rounded">
+                        ✅ Logo Added
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-end justify-center opacity-0 group-hover:opacity-100 p-4 gap-2 flex-col">
                       <Button
                         onClick={() => handleSaveImage(image.url, image.id, index + 1)}

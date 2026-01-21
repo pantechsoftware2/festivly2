@@ -11,12 +11,20 @@ export function getEventName(eventId: string): string {
 }
 
 export const industryKeywords = {
-  "Education": "books, graduation caps, globe, bright blue and yellow colors, youthful, future",
-  "Real Estate": "modern architecture, keys, open doors, blueprints, trust, family home",
-  "Tech & Startup": "modern, minimal, geometric shapes, laptop, sleek, futuristic, gradient colors",
-  "Manufacturing": "industrial, gears, factories, metallic textures, orange and grey safety colors",
-  "Retail & Fashion": "lifestyle, shopping bags, vibrant, trendy, elegant, fabrics, luxury",
-  "Food & Cafe": "warm lighting, delicious food texture, smoke, steam, cozy, inviting"
+  // --- EXISTING CATEGORIES (UPGRADED) ---
+  "Education": "cinematic photography, soft morning light streaming through classroom window, candid students studying, bokeh background, authentic indian university atmosphere, smart board, uniforms, 35mm lens, depth of field, studious vibe",
+  "Real Estate": "architectural photography, luxury indian apartment interior, golden hour sunlight hitting the balcony, wide angle shot, marble flooring, modern furniture, airy and bright, 8k resolution, vaastu compliant layout, high-end living",
+  "Tech & Startup": "modern open-plan office in bangalore, macbook pro on wooden desk, glass walls, authentic indian startup team blurred in background, soft studio lighting, editorial photography, coding screen, coffee mug, professional workspace",
+  "Manufacturing": "industrial photography, macro shot of precision machinery, dramatic factory lighting, steel textures, sparks flying, engineering workshop, high contrast, safety gear, professional depth, heavy industry",
+  "Retail & Fashion": "street style photography, high fashion editorial, vibrant indian textiles, silk saree texture, soft focus, trendy boutique interior, natural lighting, candid lifestyle shot, mannequins, colorful fabrics",
+  "Food & Cafe": "food photography, steam rising from masala chai, rustic wooden table, overhead flat lay, warm cozy atmosphere, window light, artisan plating, spices scattered, 85mm lens, delicious texture",
+
+  // --- NEW INDIAN-SPECIFIC CATEGORIES ---
+  "Jewelry & Gold": "macro photography of gold jewelry, diamond sparkle, velvet background, intricate kundun design, softbox lighting, luxury showcase, bridal necklace, reflection, high-end catalogue style, sharp focus",
+  "Weddings & Events": "candid wedding photography, marigold flower decoration, golden festive lights, blur background, vibrant indian wedding mandap, shenai vibes, joyful celebration, rich reds and golds, cinematic event capture",
+  "Ayurveda & Wellness": "minimalist product photography, herbal ingredients, mortar and pestle, green leaves, soft natural daylight, zen atmosphere, wooden texture, spa vibes, organic wellness, glass bottles, clean composition",
+  "Handicrafts & Decor": "artisan workshop, clay pottery texture, hand-painted details, earthy tones, close-up of craftsmanship, blur background, cultural heritage, authentic indian art, warm lighting, rustic aesthetic",
+  "Gym & Fitness": "high energy gym photography, sweat texture, neon lighting, weights and dumbbells, determination, athletic indian model, motion blur, modern fitness center, bold contrast, workout gear"
 };
 
 export const eventKeywords = {
