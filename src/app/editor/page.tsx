@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Header } from '@/components/header'
 import { Footer } from '@/components/footer'
-import { GenerationSpinner } from '@/components/generation-spinner'
+import { ModernSpinner } from '@/components/modern-spinner'
 import { UpgradeModal } from '@/components/upgrade-modal'
 import { IndustrySelectionModal } from '@/components/industry-selection-modal'
 import { useAuth } from '@/lib/auth-context'
@@ -635,14 +635,9 @@ function EditorPageContent() {
   return (
     <>
       <Header />
-      <GenerationSpinner 
-        messages={[
-          'Analyzing your request...',
-          'Brainstorming concepts...',
-          'Drafting the layout...',
-          'Selecting color palettes...',
-          'Finalizing your design...',
-        ]}
+      <ModernSpinner 
+        title="Generating Images..."
+        subtitle="Analyzing and creating your design"
         isVisible={generating}
       />
       

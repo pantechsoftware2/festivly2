@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     // First check if profile exists
     const { data: existingProfile, error: checkError } = await supabase
       .from('profiles')
-      .select('id')
+      .select('id, email, subscription_plan, free_images_generated')
       .eq('id', id)
       .maybeSingle()
 
@@ -90,6 +90,17 @@ export async function POST(request: NextRequest) {
       }
 
       console.log('✅ Profile updated successfully:', updateData?.[0])
+      
+      // CRITICAL: Log production state after update
+      console.log('🚀 PRODUCTION STATE AFTER UPDATE:', {
+        userId: updateData?.[0]?.id,
+        email: updateData?.[0]?.email,
+        subscription_plan: updateData?.[0]?.subscription_plan || 'free',
+        free_images_generated: updateData?.[0]?.free_images_generated || 0,
+        industry_type: updateData?.[0]?.industry_type,
+        has_logo: !!updateData?.[0]?.brand_logo_url,
+      })
+
       return NextResponse.json({
         success: true,
         profile: updateData?.[0] || null
@@ -132,6 +143,17 @@ export async function POST(request: NextRequest) {
         brand_logo_url: insertData?.[0]?.brand_logo_url,
         fullData: insertData?.[0]
       })
+
+      // CRITICAL: Log production state after insert
+      console.log('🚀 PRODUCTION STATE AFTER INSERT:', {
+        userId: insertData?.[0]?.id,
+        email: insertData?.[0]?.email,
+        subscription_plan: insertData?.[0]?.subscription_plan || 'free',
+        free_images_generated: insertData?.[0]?.free_images_generated || 0,
+        industry_type: insertData?.[0]?.industry_type,
+        has_logo: !!insertData?.[0]?.brand_logo_url,
+      })
+
       return NextResponse.json({
         success: true,
         profile: insertData?.[0] || null

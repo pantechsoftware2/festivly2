@@ -235,13 +235,20 @@ export function BrandOnboardingModal({
 
       const profileData = {
         id: userId,
-        email: userEmail,
+        email: userEmail,  // CRITICAL: Must include email for production setup
         industry_type: selectedIndustry,
         brand_logo_url: logoUrl,
         brand_style_context: brandStyleContext || null,
+        subscription_plan: 'free',  // CRITICAL: Ensure subscription plan is set
+        free_images_generated: 0,   // CRITICAL: Initialize image generation counter
       }
 
       console.log('📝 Sending profile data to API:', profileData)
+      console.log('🚨 PRODUCTION CHECK:', {
+        hasUserId: !!userId,
+        hasUserEmail: !!userEmail,
+        hasIndustry: !!selectedIndustry,
+      })
 
       // Update profile in database
       const response = await fetch('/api/profiles', {
@@ -263,6 +270,8 @@ export function BrandOnboardingModal({
         industry_type: data.profile?.industry_type,
         brand_logo_url: data.profile?.brand_logo_url,
         brand_style_context: data.profile?.brand_style_context,
+        subscription_plan: data.profile?.subscription_plan,
+        free_images_generated: data.profile?.free_images_generated,
       })
 
       setUploadProgress(null)

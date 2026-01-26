@@ -9,7 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { checkImageLimit } from '@/lib/image-limit'
 import { createClient } from '@/lib/supabase'
-import { FaWhatsapp, FaInstagram } from "react-icons/fa";
+import { FaWhatsapp, FaInstagram } from "react-icons/fa"
+import { TextGenerationModal } from '@/components/text-generation-modal'
+import { ModernSpinner } from '@/components/modern-spinner';
 
 
 interface GeneratedImage {
@@ -39,6 +41,9 @@ export default function ResultPage() {
   const [logoPosition, setLogoPosition] = useState<'left' | 'right'>('right')
   const [testOverlay, setTestOverlay] = useState(false)
   const [copiedCaption, setCopiedCaption] = useState(false)
+  const [showTextModal, setShowTextModal] = useState(false)
+  const [isGeneratingText, setIsGeneratingText] = useState(false)
+  const [textImagesGenerated, setTextImagesGenerated] = useState(false)
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -46,6 +51,16 @@ export default function ResultPage() {
       router.push('/login')
     }
   }, [user, authLoading, router])
+
+  // Show text generation modal after images load (but not if already generated)
+  useEffect(() => {
+    if (!loading && result && result.images.length > 0 && !textImagesGenerated && !showTextModal) {
+      const timer = setTimeout(() => {
+        setShowTextModal(true)
+      }, 1500) // Show after 1.5 seconds
+      return () => clearTimeout(timer)
+    }
+  }, [loading, result, textImagesGenerated, showTextModal])
 
   // Redirect to home if no images or only placeholder images (quota error)
   useEffect(() => {
@@ -649,9 +664,60 @@ export default function ResultPage() {
     }
   }
 
+  const handleGenerateTextImages = async () => {
+    if (!result || !user?.id) {
+      alert('Missing required data for text generation')
+      return
+    }
+
+    setIsGeneratingText(true)
+    setShowTextModal(false)
+
+    try {
+      console.log(`🎨 Requesting text image generation...`)
+      const response = await fetch('/api/generateImage/text-only', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          eventName: result.eventName,
+          industry: result.industry,
+          generateTextVariant: true,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to generate text images')
+      }
+
+      const textResult = await response.json()
+      console.log(`✅ Text images generated successfully`)
+
+      if (textResult.success && textResult.images && textResult.images.length > 0) {
+        // Merge text images with existing result
+        setResult(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            images: [...prev.images, ...textResult.images],
+          }
+        })
+        
+        setTextImagesGenerated(true)
+        alert('✅ Text variant images added to your gallery!')
+      }
+    } catch (err: any) {
+      console.error('❌ Text generation error:', err.message)
+      alert(`Error: ${err?.message || 'Failed to generate text images'}`)
+    } finally {
+      setIsGeneratingText(false)
+    }
+  }
+
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-slate-950 via-purple-950/20 to-slate-950">
+      <main className="min-h-screen bg-linear-to-b from-slate-950 via-purple-950/20 to-slate-950">
         <Header />
         <div className="pt-32 flex items-center justify-center">
           <div className="text-white">Loading...</div>
@@ -666,7 +732,20 @@ export default function ResultPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-purple-950/20 to-slate-950">
+    <main className="min-h-screen bg-linear-to-b from-slate-950 via-purple-950/20 to-slate-950">
+      {/* Modals & Spinners */}
+      <TextGenerationModal
+        isOpen={showTextModal}
+        onConfirm={handleGenerateTextImages}
+        onCancel={() => setShowTextModal(false)}
+        isLoading={isGeneratingText}
+      />
+      <ModernSpinner 
+        title="Generating Text Images..."
+        subtitle="Adding text overlays and captions (5-15 seconds)"
+        isVisible={isGeneratingText}
+      />
+
       <Header />
 
       <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
@@ -720,9 +799,11 @@ export default function ResultPage() {
             </div>
           </div>
 
-          {/* Generated Images Grid with Captions */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-            {result.images.map((image, index) => (
+          {/* SECTION 1: Generated CLEAN Images (2 total) */}
+          <div className="mb-16">
+            <h2 className="text-2xl font-bold text-white mb-6">✨ Clean Images</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {result.images.slice(0, 2).map((image, index) => (
               <div key={image.id} className="w-full flex flex-col h-full">
                 {/* Card Container - Image + Caption + Buttons */}
                 <div className="bg-slate-800/30 backdrop-blur border border-purple-500/20 rounded-xl overflow-hidden flex flex-col h-full">
@@ -763,7 +844,7 @@ export default function ResultPage() {
                   <div className="flex flex-col gap-4 p-5 flex-1">
                     
                     {/* Suggested Caption */}
-                    <div className="bg-gradient-to-br from-purple-900/40 via-slate-800/60 to-slate-900/40 backdrop-blur-md border border-purple-500/50 rounded-lg p-4">
+                    <div className="bg-linear-to-br from-purple-900/40 via-slate-800/60 to-slate-900/40 backdrop-blur-md border border-purple-500/50 rounded-lg p-4">
                       <p className="text-xs font-bold text-purple-400 mb-3 flex items-center gap-2">
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M11 15H9v2h2v-2zm4-4H9v2h6v-2zm3-7H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2zm-1 16H7V5h10v15z"/>
@@ -773,7 +854,7 @@ export default function ResultPage() {
                       <div className="flex items-start gap-2">
                         {/* Caption Box */}
                         <div className="flex-1 bg-slate-950/80 border-2 border-purple-500/60 rounded-lg p-3">
-                          <p className="text-xs text-white leading-relaxed whitespace-pre-wrap break-words font-medium">
+                          <p className="text-xs text-white leading-relaxed whitespace-pre-wrap break-all font-medium">
                             {generateCaption()}
                           </p>
                         </div>
@@ -851,7 +932,7 @@ export default function ResultPage() {
       py-3 px-3
       text-sm font-semibold
       transition-all duration-200
-      hover:bg-gradient-to-r hover:from-pink-500 hover:to-rose-600 hover:text-white
+      hover:bg-linear-to-r hover:from-pink-500 hover:to-rose-600 hover:text-white
       active:scale-95
     "
   >
@@ -865,7 +946,124 @@ export default function ResultPage() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
+
+          {/* SECTION 2: Generated TEXT Images (if available) */}
+          {result.images.length > 2 && (
+            <div className="mb-16">
+              <h2 className="text-2xl font-bold text-white mb-6">📝 Images with Text</h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {result.images.slice(2).map((image, index) => (
+              <div key={image.id} className="w-full flex flex-col h-full">
+                {/* Card Container - Image + Caption + Buttons */}
+                <div className="bg-slate-800/30 backdrop-blur border border-pink-500/20 rounded-xl overflow-hidden flex flex-col h-full">
+                  
+                  {/* Image Container */}
+                  <div className="w-full overflow-hidden relative group pb-4" style={{aspectRatio: '1/1.45', border: 'none', outline: 'none', boxShadow: 'none'}}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imagesWithLogo[image.id] || image.url}
+                      alt={`Text image ${index + 1}`}
+                      className="w-full h-full object-cover block"
+                      style={{border: 'none', outline: 'none', boxShadow: 'none', margin: '0', padding: '0', display: 'block'}}
+                      crossOrigin="anonymous"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-end justify-center opacity-0 group-hover:opacity-100 p-4 gap-2 flex-col">
+                      <Button
+                        onClick={() => handleSaveImage(image.url, image.id, index + 3)}
+                        disabled={saving === image.id || downloading}
+                        className="w-full bg-green-600 hover:bg-green-700"
+                      >
+                        {saving === image.id ? '💾 Saving...' : '💾 Save to Projects'}
+                      </Button>
+                      <Button
+                        onClick={() => handleDownloadImage(image.url, image.id, index + 2)}
+                        disabled={downloading || saving === image.id}
+                        className="w-full bg-pink-600 hover:bg-pink-700"
+                      >
+                        ⬇️ Download
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Content Section */}
+                  <div className="flex flex-col gap-4 p-5 flex-1">
+                    
+                    {/* Suggested Caption */}
+                    <div className="bg-linear-to-br from-pink-900/40 via-slate-800/60 to-slate-900/40 backdrop-blur-md border border-pink-500/50 rounded-lg p-4">
+                      <p className="text-xs font-bold text-pink-400 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M11 15H9v2h2v-2zm4-4H9v2h6v-2zm3-7H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2zm-1 16H7V5h10v15z"/>
+                        </svg>
+                        Caption
+                      </p>
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 bg-slate-950/80 border-2 border-pink-500/60 rounded-lg p-3">
+                          <p className="text-xs text-white leading-relaxed whitespace-pre-wrap break-all font-medium">
+                            {generateCaption()}
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleCopyCaption}
+                          className={`shrink-0 px-3 py-3 font-semibold rounded-lg transition-all duration-200 text-xs shadow-lg hover:shadow-xl active:scale-95 whitespace-nowrap flex items-center justify-center ${
+                            copiedCaption
+                              ? 'bg-green-600 text-white border border-green-400/50'
+                              : 'bg-pink-600 hover:bg-pink-700 text-white border border-pink-400/50'
+                          }`}
+                        >
+                          {copiedCaption ? (
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Social Sharing Buttons */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleShareImage(
+                            imagesWithLogo[image.id] || image.url,
+                            index + 3
+                          )
+                        }
+                        className="flex items-center justify-center gap-2 border border-green-500 text-green-600 bg-transparent rounded-lg py-3 px-3 text-sm font-semibold transition-all duration-200 hover:bg-green-500 hover:text-white active:scale-95"
+                      >
+                        <FaWhatsapp className="w-5 h-5" />
+                        WhatsApp
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleShareImage(
+                            imagesWithLogo[image.id] || image.url,
+                            index + 3
+                          )
+                        }
+                        className="flex items-center justify-center gap-2 border border-pink-500 text-pink-600 bg-transparent rounded-lg py-3 px-3 text-sm font-semibold transition-all duration-200 hover:bg-linear-to-r hover:from-pink-500 hover:to-rose-600 hover:text-white active:scale-95"
+                      >
+                        <FaInstagram className="w-5 h-5" />
+                        Instagram
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex gap-4 justify-center flex-wrap">

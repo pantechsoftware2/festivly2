@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/lib/toast-context'
 import { Header } from '@/components/header'
 import { Footer } from '@/components/footer'
-import { GenerationSpinner } from '@/components/generation-spinner'
+import { ModernSpinner } from '@/components/modern-spinner'
 import { UpgradeModal } from '@/components/upgrade-modal'
 import { SimpleSignUpModal } from '@/components/simple-signup-modal'
 import { BrandOnboardingModal } from '@/components/brand-onboarding-modal'
@@ -39,8 +39,8 @@ export default function EditorPage() {
   const [imagesRemaining, setImagesRemaining] = useState(5)
   const [pendingEventId, setPendingEventId] = useState<string | null>(null)
   
-  // Consolidated loading state: true until both auth AND profile data are ready
-  const isFullyLoaded = !loading && (!user || (user && !profileLoading))
+  // Consolidated loading state: true only until initial auth is complete
+  const isInitialAuthLoading = loading
   const isProfileReady = user && userProfile && userProfile.industry_type
 
   // Check for pending event generation from localStorage on mount
@@ -247,8 +247,9 @@ export default function EditorPage() {
 
   if (generating) {
     return (
-      <GenerationSpinner 
-        messages={['Generating images...', 'Creating your festival post...', 'Applying industry context...']}
+      <ModernSpinner 
+        title="Generating Images..."
+        subtitle="Creating your festival post"
         isVisible={generating}
       />
     )
@@ -280,7 +281,7 @@ export default function EditorPage() {
           {/* Upcoming Events Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {UPCOMING_EVENTS.map((event) => {
-              const isDisabled = !isFullyLoaded || (user && profileLoading)
+              const isDisabled = isInitialAuthLoading // Only disable while auth is loading
               return (
               <Card
                 key={event.id}
@@ -319,7 +320,7 @@ export default function EditorPage() {
                     }}
                     disabled={isDisabled ?? false}
                   >
-                    {isDisabled ? 'Loading...' : 'Generate 4 Images'}
+                    {isDisabled ? '⏳ Signing In...' : 'Generate 4 Images'}
                   </Button>
                 </div>
               </Card>
