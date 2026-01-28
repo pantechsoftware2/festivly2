@@ -8,6 +8,7 @@ import { Footer } from '@/components/footer'
 import { ModernSpinner } from '@/components/modern-spinner'
 import { UpgradeModal } from '@/components/upgrade-modal'
 import { IndustrySelectionModal } from '@/components/industry-selection-modal'
+import { TextGenerationModal } from '@/components/text-generation-modal'
 import { useAuth } from '@/lib/auth-context'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -39,6 +40,9 @@ function EditorPageContent() {
   const [showIndustryModal, setShowIndustryModal] = useState(false)
   const [userIndustry, setUserIndustry] = useState<string | null>(null)
   const [checkingIndustry, setCheckingIndustry] = useState(false)
+  const [showTextGenerationModal, setShowTextGenerationModal] = useState(false)
+  const [isFirstGeneration, setIsFirstGeneration] = useState(true)
+  const [imagesGeneratedCount, setImagesGeneratedCount] = useState(0)
 
 
   const { user, loading: authLoading } = useAuth()
@@ -165,7 +169,7 @@ function EditorPageContent() {
   }, [result])
 
   // Manual generation handler for button click - Clean logic for auth users
-  const handleGenerateImage = async () => {
+  const handleGenerateImage = async (includeText: boolean = false) => {
     if (!prompt.trim()) {
       return
     }
@@ -238,6 +242,7 @@ function EditorPageContent() {
           prompt: prompt.trim(),
           userId: user.id,
           requestId: requestId, // Include unique request ID
+          includeText: includeText, // Include text generation flag
         }),
         signal: controller.signal,
       })
@@ -274,24 +279,9 @@ function EditorPageContent() {
       if (responseData?.success && responseData?.images && Array.isArray(responseData.images) && responseData.images.length > 0) {
         console.log(`✅ Generation successful! Got ${responseData.images.length} images`)
         
-        // Show pricing modal after 1st generation for free users (DISABLED FOR NOW)
-        // if (responseData?.showPricingModal) {
-        //   console.log('📊 Showing pricing modal after 1st free generation')
-        //   setShowUpgradeModal(true)
-        //   // Store result but DON'T redirect - let user see pricing modal
-        //   setResult(responseData)
-        //   
-        //   try {
-        //     sessionStorage.setItem('generatedResult', JSON.stringify(responseData))
-        //     localStorage.setItem('lastGeneratedResult', JSON.stringify(responseData))
-        //   } catch (e) {
-        //     console.warn('⚠️ Storage error:', e)
-        //   }
-        //   return
-        // }
-        
         // Store result
         setResult(responseData)
+        setGenerating(false)
         
         // Save to sessionStorage for result page
         try {
@@ -300,8 +290,26 @@ function EditorPageContent() {
         } catch (e) {
           console.warn('⚠️ Storage error:', e)
         }
-        
-        // Redirect to result page immediately (only if no pricing modal)
+
+        // LOGIC: Show text generation modal 3 seconds after FIRST generation (without text)
+        if (isFirstGeneration && !includeText) {
+          console.log('📊 First generation complete, will show text modal in 3 seconds...')
+          setImagesGeneratedCount(1)
+          
+          // Set a timeout to show modal after 3 seconds
+          setTimeout(() => {
+            console.log('⏰ 3 seconds passed, showing text generation modal')
+            setShowTextGenerationModal(true)
+          }, 3000)
+          
+          // Still show the result page but DON'T redirect yet
+          // User will see the image while waiting for modal
+          return
+        }
+
+        // For subsequent generations or text-included generations, redirect immediately
+        setIsFirstGeneration(false)
+        setImagesGeneratedCount(imagesGeneratedCount + 1)
         router.push('/result')
         return
       }
@@ -627,7 +635,25 @@ function EditorPageContent() {
             console.log('⚠️ User cancelled industry selection')
             setShowIndustryModal(false)
           }}
-        />      </>
+        />
+        {/* TEXT GENERATION MODAL - Ask user if they want to generate with text */}
+        <TextGenerationModal
+          isOpen={showTextGenerationModal}
+          isLoading={generating}
+          onConfirm={() => {
+            console.log('✅ User wants to generate with text')
+            setShowTextGenerationModal(false)
+            // Close the modal and generate again with includeText=true
+            handleGenerateImage(true)
+          }}
+          onCancel={() => {
+            console.log('⚠️ User declined text generation')
+            setShowTextGenerationModal(false)
+            // Redirect to result page to show first image
+            router.push('/result')
+          }}
+        />
+      </>
     )
   }
 
@@ -657,7 +683,7 @@ function EditorPageContent() {
                 />
 
                 <Button
-                  onClick={handleGenerateImage}
+                  onClick={() => handleGenerateImage(false)}
                   disabled={!prompt.trim() || generating || logoFetching}
                   className="w-full bg-black hover:bg-gray-900 text-white font-semibold py-2.5 rounded-lg disabled:opacity-50"
                   title={logoFetching ? "Loading your logo... please wait" : ""}
@@ -691,6 +717,24 @@ function EditorPageContent() {
         onCancel={() => {
           console.log('⚠️ User cancelled industry selection')
           setShowIndustryModal(false)
+        }}
+      />
+
+      {/* TEXT GENERATION MODAL - Ask user if they want to generate with text */}
+      <TextGenerationModal
+        isOpen={showTextGenerationModal}
+        isLoading={generating}
+        onConfirm={() => {
+          console.log('✅ User wants to generate with text')
+          setShowTextGenerationModal(false)
+          // Close the modal and generate again with includeText=true
+          handleGenerateImage(true)
+        }}
+        onCancel={() => {
+          console.log('⚠️ User declined text generation')
+          setShowTextGenerationModal(false)
+          // Redirect to result page to show first image
+          router.push('/result')
         }}
       />
     </>

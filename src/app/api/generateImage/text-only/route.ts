@@ -1,8 +1,3 @@
-/**
- * API Route: /api/generateImage/text-only
- * Generates 2 TEXT variant images only (with text overlays and captions)
- * Used after user generates 2 clean images and chooses to add text variants
- */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { generateImages } from '@/lib/vertex-ai'

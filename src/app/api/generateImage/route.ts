@@ -1,8 +1,4 @@
-/**
- * API Route: /api/generateImage
- * Generates 4 image variants using Imagen-4 with event + industry context
- * Uses the Desi Prompt Engine to combine industry keywords + event keywords
- */
+
 
 import { NextRequest, NextResponse } from 'next/server'
 import { generateImages } from '@/lib/vertex-ai'
@@ -115,6 +111,7 @@ interface GenerateImageRequest {
   prompt?: string
   userId?: string
   requestId?: string
+  includeText?: boolean
 }
 
 interface GeneratedImage {
@@ -276,12 +273,17 @@ async function handleGenerateImage(request: NextRequest): Promise<NextResponse<G
 
 async function processGenerationRequest(body: GenerateImageRequest): Promise<NextResponse<GenerateImageResponse>> {
   try {
-    const { eventId, prompt: userPrompt, userId } = body
+    const { eventId, prompt: userPrompt, userId, includeText } = body
 
     // VALIDATION: Ensure userId is provided (especially critical for Google auth)
     if (!userId) {
       console.warn(`⚠️ CRITICAL: userId is missing/undefined. This may be a Google auth issue.`)
       console.warn(`   Request body: eventId=${eventId}, hasPrompt=${!!userPrompt}, userId=${userId}`)
+    }
+
+    // Log if this is a text generation request
+    if (includeText) {
+      console.log(`📝 TEXT GENERATION REQUEST: User requested text overlay variant`)
     }
 
     // Get user industry and subscription from database
@@ -422,11 +424,7 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
         console.warn(`⚠️ PRODUCTION QUALITY: Generating with DEFAULT industry "${userIndustry}" - User may need to set industry_type in profile`)
       }
       
-      // Note: Sequential batch generation will happen below
-      // 1. Generate clean prompt (generateSmartPrompt with false)
-      // 2. Generate text prompt (generateSmartPrompt with true)
-      // 3. Request 2 clean images first (BATCH 1)
-      // 4. Request 2 text images second (BATCH 2) with fallback to clean if text fails
+
       console.log(`\n🎉 EVENT-BASED GENERATION:`)
       console.log(`  Event: ${eventName}`)
       console.log(`  Industry: ${userIndustry}${!userHasIndustry ? ' (DEFAULT - user should set)' : ' (explicit)'}`)
@@ -456,29 +454,56 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
       const basePrompt = await generateSmartPrompt(eventName, userIndustry, brandStyleContext, false)
       console.log(`✅ Base prompt created: "${basePrompt.substring(0, 80)}..."`)
 
-      // Generate 2 CLEAN images ONLY (no text - user can request text variant later)
-      console.log(`\n🚀 Generating 2 CLEAN images (no text)...`)
-      let cleanPrompt = basePrompt + '\n\nNO TEXT RENDERING: Generate clean image WITHOUT any text, headlines, or overlays.'
-      if (userSubscription === 'pro' || userSubscription === 'pro plus') {
-        cleanPrompt = enhancePromptForPremium(cleanPrompt, userSubscription)
-      }
-      
-      try {
-        const cleanImages = await generateImages({
-          prompt: cleanPrompt,
-          sampleCount: 2,
-        })
-        
-        const realCleanImages = cleanImages.filter(img => !img.startsWith('data:image/svg+xml'))
-        if (realCleanImages.length === 0) {
-          throw new Error('No real images generated')
+      if (includeText) {
+        // Generate 2 images WITH text overlays
+        console.log(`\n🚀 Generating 2 images WITH TEXT overlays...`)
+        let textPrompt = basePrompt + '\n\nWITH TEXT RENDERING: Generate image WITH professional text overlays, headlines, and captions. Make text prominent and readable with strong contrast.'
+        if (userSubscription === 'pro' || userSubscription === 'pro plus') {
+          textPrompt = enhancePromptForPremium(textPrompt, userSubscription)
         }
         
-        base64Images.push(...realCleanImages)
-        console.log(`✅ SUCCESS: Generated ${realCleanImages.length} clean images`)
-      } catch (err: any) {
-        console.error(`❌ Generation failed: ${err.message}`)
-        throw err
+        try {
+          const textImages = await generateImages({
+            prompt: textPrompt,
+            sampleCount: 2,
+          })
+          
+          const realTextImages = textImages.filter(img => !img.startsWith('data:image/svg+xml'))
+          if (realTextImages.length === 0) {
+            throw new Error('No real images generated')
+          }
+          
+          base64Images.push(...realTextImages)
+          console.log(`✅ SUCCESS: Generated ${realTextImages.length} text images`)
+        } catch (err: any) {
+          console.error(`❌ Text generation failed: ${err.message}`)
+          throw err
+        }
+      } else {
+        // Generate 2 CLEAN images ONLY (no text - user can request text variant later)
+        console.log(`\n🚀 Generating 2 CLEAN images (no text)...`)
+        let cleanPrompt = basePrompt + '\n\nNO TEXT RENDERING: Generate clean image WITHOUT any text, headlines, or overlays.'
+        if (userSubscription === 'pro' || userSubscription === 'pro plus') {
+          cleanPrompt = enhancePromptForPremium(cleanPrompt, userSubscription)
+        }
+        
+        try {
+          const cleanImages = await generateImages({
+            prompt: cleanPrompt,
+            sampleCount: 2,
+          })
+          
+          const realCleanImages = cleanImages.filter(img => !img.startsWith('data:image/svg+xml'))
+          if (realCleanImages.length === 0) {
+            throw new Error('No real images generated')
+          }
+          
+          base64Images.push(...realCleanImages)
+          console.log(`✅ SUCCESS: Generated ${realCleanImages.length} clean images`)
+        } catch (err: any) {
+          console.error(`❌ Generation failed: ${err.message}`)
+          throw err
+        }
       }
 
       // Ensure exactly 2 images
@@ -570,10 +595,6 @@ async function processGenerationRequest(body: GenerateImageRequest): Promise<Nex
           continue
         }
 
-        // OPTIONAL: Add user's brand logo to image if available
-        // NOTE: Logo overlay is client-side only (in result/page.tsx)
-        // This is more reliable and doesn't require additional server dependencies
-        // If no logo is available, the image will be returned without branding
         if (userBrandLogo && userBrandLogo.length > 10) {
           console.log(`   🏷️ Logo URL available: ${userBrandLogo.substring(0, 50)}... (will be applied client-side)`)
         } else {
